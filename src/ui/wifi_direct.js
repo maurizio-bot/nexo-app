@@ -420,7 +420,7 @@ export class WifiDirect {
         };
         self.out.set(fileId, st);
         var wire = Object.assign({}, meta);
-        if (wire.xs) { delete wire.caption; delete wire.once; } // 4A (23-11): con el sello (xs), el comentario y «ver una vez» no van en claro en la oferta
+        if (wire.xs) { delete wire.caption; delete wire.once; } delete wire.rp; // 4A (23-11): con el sello (xs), el comentario y «ver una vez» no van en claro en la oferta
         hosted = true;   // desde aquí el otro puede estar montando (o tener montado) el grupo para esto
         self._ctl(deviceId, { type: 'wq', id: fileId, size: data.length, meta: wire, pk: e2eMyPublicKey() }).catch(function(e) { hosted = false; clearTimeout(offerTimer); self.out.delete(fileId); reject(e); });
       });

@@ -343,7 +343,9 @@ export class BleAckSystem {
       return self._preparingFor(fileId, self._ensurePeerKey(deviceId, m.dst, m.to).then(function(t) {
         // Decisión del dueño 23-11 (4A, auditoría T-T1): el COMENTARIO y «ver una vez» también van sellados (antes viajaban en claro en
         // la cabecera: un puente los leía, o quitaba «ver una vez» para que la foto se quedara)
-        var xtra = (m.caption || m.once) ? JSON.stringify({ cp: (typeof m.caption === 'string' ? m.caption.substring(0, 1000) : ''), o1: m.once ? 1 : 0 }) : null;
+        // 27-11 (dueño): la cita de un adjunto que responde a un mensaje (rp) también va sellada: lleva el resumen del mensaje citado
+        var rpX = (m.rp && typeof m.rp.id === 'string') ? { id: m.rp.id.substring(0, 120), a: String(m.rp.a || '').substring(0, 40), s: String(m.rp.s || '').substring(0, 200), k: String(m.rp.k || '').substring(0, 20) } : null;
+        var xtra = (m.caption || m.once || rpX) ? JSON.stringify(Object.assign({ cp: (typeof m.caption === 'string' ? m.caption.substring(0, 1000) : ''), o1: m.once ? 1 : 0 }, rpX ? { rp: rpX } : {})) : null;
         return Promise.all([
           e2eSealB64(t, base64Data, self._outAd(t, fileId)),
           (m.thumb && !e2eAnyEncrypted(m.thumb)) ? e2eSealB64(t, m.thumb, self._outAd(t, fileId + '#t')) : m.thumb,
@@ -355,6 +357,7 @@ export class BleAckSystem {
         if (r[1]) em.thumb = r[1];
         if (r[2]) em.name = r[2];
         if (r[3]) em.xs = r[3]; // 4A: la cabecera lleva xs y no el comentario ni «ver una vez» en claro
+        delete em.rp; // la cita solo viaja sellada (en xs)
         return self._withSealedFrom(em).then(function(em2) { return self._sendFileBest(deviceId, fileId, r[0], em2); });
       });
     }

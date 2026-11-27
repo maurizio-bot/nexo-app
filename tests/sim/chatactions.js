@@ -26,7 +26,7 @@ async function boot(name, native) {
     resources: new DistLoader(path.join(buildDir, 'dist')), pretendToBeVisual: true, virtualConsole: vc,
     beforeParse(win) {
       win.CapacitorCustomPlatform = { name: 'android' }; installWebCrypto(win); win.Capacitor = { Plugins: { NexoBLE: native.plugin() } };
-      win.HTMLElement.prototype.scrollTo = function () {}; Object.defineProperty(win.navigator, 'clipboard', { value: { writeText: async (t) => { win.__copied = t; } } }); 
+      win.HTMLElement.prototype.scrollTo = function () {}; if (!win.URL.createObjectURL) { win.URL.createObjectURL = () => 'blob:nexo-test'; win.URL.revokeObjectURL = () => {}; } Object.defineProperty(win.navigator, 'clipboard', { value: { writeText: async (t) => { win.__copied = t; } } }); 
     },
   });
   const win = dom.window;
@@ -95,6 +95,18 @@ const json = (nat, f) => { try { return JSON.parse(nat.files.get(f) || 'null'); 
   r.B_cita_de = qB && qB.querySelector('.msg-quote') ? qB.querySelector('.msg-quote div').textContent : null;
   r.A_ve_cita = !!(bubbleWith(A, 'esta es mi respuesta') || {}).querySelector && !!bubbleWith(A, 'esta es mi respuesta').querySelector('.msg-quote');
   r.barra_desaparece = !A.win.document.getElementById('reply-bar');
+  // 1b) Dueño 27-11: deslizar para responder y mandar una NOTA DE VOZ → va como respuesta a ese mensaje (cita arriba, en los dos)
+  //     y la barra «Respondiendo a» se quita (antes el audio salía suelto y la barra quedaba con un mensaje vacío)
+  { const sv = bubbleWith(A, 'pregunta de B'); const pv = (type, x) => sv.dispatchEvent(new A.win.MouseEvent(type, { bubbles: true, clientX: x, clientY: 300 }));
+    pv('pointerdown', 100); pv('pointermove', 150); pv('pointermove', 190); pv('pointerup', 190); await sleep(400); }
+  r.voz_barra_antes = !!A.win.document.getElementById('reply-bar');
+  const vozId = A.win.__nexoSendAttachment('audio', Buffer.alloc(3000, 7).toString('base64'), { format: 'webm', duration: 2, mimeType: 'audio/webm' });
+  await sleep(300);
+  r.voz_barra_se_quita = !A.win.document.getElementById('reply-bar');
+  const qVa = A.win.document.querySelector('.message[data-msg-id="' + vozId + '"] .msg-quote');
+  r.voz_A_ve_cita = !!(qVa && qVa.textContent.indexOf('pregunta de B') >= 0);
+  r.voz_B_ve_cita_s = await waitFor(() => { const q = B.win.document.querySelector('.message[data-msg-id="' + vozId + '"] .msg-quote'); return !!(q && q.textContent.indexOf('pregunta de B') >= 0); }, 30000);
+  r.voz_B_es_audio = !!B.win.document.querySelector('.message[data-msg-id="' + vozId + '"] .vn-wrap');
   // 2) Responder deslizando la burbuja a la derecha
   const sw = bubbleWith(A, 'pregunta de B');
   const pe = (type, x) => sw.dispatchEvent(new A.win.MouseEvent(type, { bubbles: true, clientX: x, clientY: 300 }));

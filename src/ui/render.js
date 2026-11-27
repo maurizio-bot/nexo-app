@@ -9,7 +9,7 @@ import { _buildFileCard, _ensureVideoThumb, _openFullscreenMedia } from './file_
 import { registerViewerSource } from './media_swipe.js';   // 3159: deslizar entre las fotos y vídeos del chat en el visor
 import { _canUpgradeStatus, _getCurrentContactId, _getDomMessageStatus, _normId } from './chat_format.js';
 import { _clearMessageContainer } from './chat_nav.js';
-import { _editedMark, _fillTextBubble, _renderReactions, _renderedMessageIds } from './chat_actions.js';
+import { _editedMark, _fillTextBubble, _renderReactions, _renderedMessageIds, _replyQuoteEl, _validRp } from './chat_actions.js';
 import { starMark } from './chat_star.js'; // 3219: la estrellita de un mensaje destacado
 import { _fmtTime } from './file_tools.js';
 import { _msgContactMap } from './chat_state.js';
@@ -703,6 +703,12 @@ export function _renderMessage(msg, skipSave) {
       capEl.className = 'msg-caption';
       capEl.textContent = attachment.meta.caption.substring(0, 1000);
       contentDiv.appendChild(capEl);
+    }
+    // 27-11 (dueño): un adjunto que responde a un mensaje (nota de voz, foto, archivo…) lleva la cita arriba, como el texto
+    if (attachment && attachment.meta && _validRp(attachment.meta.rp) && !attachment.meta.once) {
+      var qA = _replyQuoteEl(attachment.meta.rp);
+      qA.style.margin = '4px 4px 4px 4px';
+      contentDiv.insertBefore(qA, contentDiv.firstChild);
     }
     div.appendChild(contentDiv);
     var metaDiv = document.createElement('div');

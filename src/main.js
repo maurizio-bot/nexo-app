@@ -179,6 +179,7 @@ import { silencedInstall } from './ui/silenced.js'; // COLA 22: «tu teléfono s
 try { silencedInstall(); } catch (e) {}
 appSetupUse({ /* [pegamento] */ initializeNexoApp: initializeNexoApp });
 pickersUse({ /* [pegamento] */ _sendAttachment: _sendAttachment, _sendBigFile: _sendBigFile });
+if (typeof window !== 'undefined') window.__nexoSendAttachment = _sendAttachment; // pruebas (tests/sim/chatactions.js: responder con nota de voz)
 videoSendUse({ /* [pegamento] */ _handleIncomingMessage: _handleIncomingMessage, _sendAttachment: _sendAttachment, _sendFileFor: _sendFileFor, _updateMessageStatus: _updateMessageStatus, _updateMessageStorageStatus: _updateMessageStorageStatus });
 chatActionsUse({ /* [pegamento] */ _renderMessage: _renderMessage, _sendAttachment: _sendAttachment, _sendTextTo: _sendTextTo });
 voiceUse({ /* [pegamento] */ _sendAttachment: _sendAttachment });

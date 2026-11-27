@@ -125,20 +125,7 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
     fw.textContent = t('chat_forwarded', '↪ Reenviado');
     contentDiv.appendChild(fw);
   }
-  if (k.rp && k.rp.id) {
-    var q = document.createElement('div');
-    q.className = 'msg-quote';
-    q.style.cssText = 'border-left:2px solid var(--nx-cyan,#00c8ff);background:rgba(0,0,0,0.25);border-radius:6px;padding:4px 8px;margin-bottom:4px;cursor:pointer;font-size:12px;';
-    var who = document.createElement('div');
-    who.style.cssText = 'color:#00c8ff;font-weight:600;';
-    who.textContent = _normId(k.rp.a) === _myNexoId() ? t('chat_you', 'Tú') : _contactName(k.rp.a);
-    var what = document.createElement('div');
-    what.style.cssText = 'opacity:0.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;';
-    what.textContent = String(k.rp.s || '');
-    q.appendChild(who); q.appendChild(what);
-    q.onclick = function(e) { e.stopPropagation(); _scrollToMessage(k.rp.id); };
-    contentDiv.appendChild(q);
-  }
+  if (k.rp && k.rp.id) contentDiv.appendChild(_replyQuoteEl(k.rp));
   var ts = document.createElement('span');
   ts.className = 'msg-text';
   if (!paintTextWithLinks(ts, k.t)) ts.textContent = String(k.t || ''); // 3161: enlaces que se tocan
@@ -149,8 +136,34 @@ export function _fillTextBubble(contentDiv, msg, isOwn) {
   contentDiv.appendChild(ts);
 }
 
+// 27-11 (dueño: «deslizo para responder, mando un audio y se va solo»): la cita también va en los adjuntos (nota de voz, foto,
+// archivo…) en meta.rp. Viene del otro teléfono: solo textos (textContent) y recortados.
+export function _replyQuoteEl(rp) {
+  var q = document.createElement('div');
+  q.className = 'msg-quote';
+  q.style.cssText = 'border-left:2px solid var(--nx-cyan,#00c8ff);background:rgba(0,0,0,0.25);border-radius:6px;padding:4px 8px;margin-bottom:4px;cursor:pointer;font-size:12px;';
+  var who = document.createElement('div');
+  who.style.cssText = 'color:#00c8ff;font-weight:600;';
+  who.textContent = _normId(rp.a) === _myNexoId() ? t('chat_you', 'Tú') : _contactName(rp.a);
+  var what = document.createElement('div');
+  what.style.cssText = 'opacity:0.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:220px;';
+  what.textContent = String(rp.s || '').slice(0, 200);
+  q.appendChild(who); q.appendChild(what);
+  var rid = String(rp.id || '');
+  q.onclick = function(e) { e.stopPropagation(); _scrollToMessage(rid); };
+  return q;
+}
+// La respuesta en curso de ESE chat (y se quita la barra): la usa un adjunto al salir. null si no hay o es de otro chat.
+export function _takeReplyFor(cid) {
+  if (!_replyTo || !cid || _replyCid !== _normId(cid)) return null;
+  var r = _replyTo; _cancelReply(); return r;
+}
+export function _validRp(rp) {
+  return !!(rp && typeof rp === 'object' && typeof rp.id === 'string' && rp.id && rp.id.length <= 120);
+}
+
 export function _scrollToMessage(id) {
-  var el = document.querySelector('.message[data-msg-id="' + id + '"]');
+  var el = null; try { el = document.querySelector('.message[data-msg-id="' + (window.CSS && window.CSS.escape ? window.CSS.escape(String(id)) : String(id)) + '"]'); } catch (e) {}
   if (!el) { _showInfoToast(t('chat_quote_gone', 'El mensaje citado ya no está en el chat'), 2500); return; }
   try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
   el.classList.add('msg-highlight');
@@ -665,7 +678,7 @@ export async function _forwardTo(cid, msg, prep, onSettled) {
     var payload = prep.payload;
     var meta = Object.assign({}, prep.meta);
     if (meta.big) { _showInfoToast(t('chat_big_no_forward', 'Los archivos grandes todavía no se pueden reenviar'), 2500); return; }
-    ['preview', 'hdSize', 'hdFor', 'hd', 'wdOnly', 'fwd'].forEach(function(k) { delete meta[k]; });
+    ['preview', 'hdSize', 'hdFor', 'hd', 'wdOnly', 'fwd', 'rp'].forEach(function(k) { delete meta[k]; });
     if (!payload) { _showInfoToast(t('chat_forward_file_gone', 'No se pudo reenviar: el archivo ya no está'), 2500); return; }
     console.log('[ATTACH] Reenviando ' + msg.attachmentType + ' a ' + cid);
     var gsF = window.bleInterface && window.bleInterface.groups;

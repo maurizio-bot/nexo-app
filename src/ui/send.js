@@ -13,6 +13,7 @@ import { bigToGroup } from './group_media.js';
 import { _failStatus } from './ble_helpers.js';
 import { blobMailboxEligible, MAILBOX_MAX_BYTES as BLOB_MAILBOX_MAX_BYTES } from '../net/blob_mailbox.js'; // Fase C (2971): adjuntos de grupo por referencia
 import { t } from './i18n.js';
+import { _takeReplyFor } from './chat_actions.js'; // 27-11: responder con un adjunto (nota de voz, foto…)
 
 
 /**
@@ -106,6 +107,9 @@ export function _sendAttachment(type, payload, meta, opts) {
     console.warn('[ATTACH] Payload vacío, no se envía');
     return;
   }
+  // 27-11 (dueño): deslizar para responder y mandar una nota de voz (o foto, archivo…) → el adjunto va como respuesta a ese
+  // mensaje (meta.rp, la misma cita que el texto) y se quita la barra «Respondiendo a». Un reenvío (opts.contactId) no lleva cita.
+  if (!(opts && opts.contactId) && !meta.hdFor) { var rpA = _takeReplyFor(contactId); if (rpA) meta.rp = rpA; }
 
   // Ronda 2758: en un grupo va dentro del sobre a cada miembro (groups.js); id 'gm…' para juntar las confirmaciones
   var gsA = window.bleInterface && window.bleInterface.groups, inGroup = !!(gsA && gsA.isGroup(contactId));
@@ -234,6 +238,7 @@ export function _sendBigFile(contactId, file, mime) {
   _noteContactMessage(contactId, 'file', Date.now());
   var meta = { name: file.name, size: file.size, type: 'file', mime: mime, big: { id: msgId, size: file.size } };
   if (inGroup) meta.big.from = _normId(bi.localNexoId);
+  var rpB = _takeReplyFor(contactId); if (rpB) meta.rp = rpB; // 27-11: también un archivo grande responde a un mensaje
   var localMsg = { msgId: msgId, messageId: msgId, content: JSON.stringify({ type: 'attachment', attachmentType: 'file', payload: 'big', meta: meta }),
     _own: true, status: 'sending', timestamp: Date.now(), attachmentType: 'file', attachmentPayload: 'big', attachmentMeta: meta };
   if (_normId(contactId) === _normId(_getCurrentContactId())) _renderMessage(localMsg, true);

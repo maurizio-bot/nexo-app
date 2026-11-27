@@ -21,6 +21,16 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **27-11 noche (Opus), [skip ci], va en la SIGUIENTE APK:** **responder con un adjunto** (dueño: «deslizo para responder, mando audio y se
+  va solo; queda la barra con un mensaje vacío»): nota de voz, foto, archivo (también grande) llevan la cita (`meta.rp`, sellada en `xs`
+  por el camino cifrado; `_takeReplyFor` quita la barra; un reenvío no la lleva). `chatactions.js` 1b (voz_*). NOVEDADES: añadir
+  «Puedes responder a un mensaje con una nota de voz, foto o archivo» al publicar la 3161.
+  **PENDIENTE APROBACIÓN DEL DUEÑO — «no cortar un envío mientras avance»** (le expliqué y propuse): hoy cortan aunque avance:
+  (1) `chat_stream` tope duro 2 h desde el inicio (armGlobal + `NET_FILE_AUTORETRY_BUDGET_MS`); (2) `wifi_direct.js` ~405 plazo fijo
+  50 s + tamaño a ~100 KB/s; (3) `l2_fast.js` 125/178 plazo fijo a ~20 KB/s (ambos lados); (4) `blob_mailbox.putBlob`: un trozo que
+  ningún relé guarda tira TODA la subida y el reintento empieza de cero (sin reanudar). Propuesta: medir velocidad cada ~10 s, cortar solo
+  tras ~1 min SIN avance, quedar ⏳ y seguir desde donde iba; tarjeta con velocidad y lo que falta. Lo nativo (soTimeout 30–60 s por
+  lectura) y el wakelock de 20 min (se renueva por bloque) ya son por inactividad: bien.
 - **SIGUIENTE SESIÓN (27-11 ~21:50 México, cerrada por contexto al 25 %):** 1) revisar el CI de la **APK 3161** (commit e810a05 en
   NEXOCHAT, subido 20:53, ~22:20) y, si pasó, NOVEDADES al historial como 3161 (si falló: qué prueba). 2) Empezar **`docs/PLAN_CAPACIDAD_27-11.md`**
   (TODO aprobado por el dueño; leerlo entero, es corto): 0 sincronía de chats al entrar/deslizar abajo (1 a 1 y grupos, en su lugar,

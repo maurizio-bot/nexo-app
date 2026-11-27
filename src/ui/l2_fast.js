@@ -127,7 +127,7 @@ export class L2Fast {
         }
       });
       offered = true;
-      self._ctl(deviceId, { type: 'lq', id: fileId, size: data.length, meta: (function(w) { if (w.xs) { delete w.caption; delete w.once; } return w; })(Object.assign({}, meta)) }) /* 4A (23-11) */.catch(function(e) { offered = false; clearTimeout(timer); self.out.delete(fileId); reject(e); });
+      self._ctl(deviceId, { type: 'lq', id: fileId, size: data.length, meta: (function(w) { if (w.xs) { delete w.caption; delete w.once; } delete w.rp; return w; })(Object.assign({}, meta)) }) /* 4A (23-11) */.catch(function(e) { offered = false; clearTimeout(timer); self.out.delete(fileId); reject(e); });
     }).then(function(r) {
       self.busy = false;
       self.stats.sent++;

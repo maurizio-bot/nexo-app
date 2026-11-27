@@ -322,7 +322,7 @@ export const ackResume = {
         dm.thumb = r[1] || null;
         dm.name = r[2] || undefined;
         // 4A (23-11): comentario y «ver una vez» sellados (lo de la cabecera en claro, si lo hubiera, se ignora)
-        if (r[3]) { try { var xo = JSON.parse(r[3]); dm.caption = (typeof xo.cp === 'string' && xo.cp) ? xo.cp.substring(0, 1000) : undefined; dm.once = xo.o1 === 1; } catch (e) {} }
+        if (r[3]) { try { var xo = JSON.parse(r[3]); dm.caption = (typeof xo.cp === 'string' && xo.cp) ? xo.cp.substring(0, 1000) : undefined; dm.once = xo.o1 === 1; if (xo.rp && typeof xo.rp === 'object' && typeof xo.rp.id === 'string' && xo.rp.id && xo.rp.id.length <= 120) dm.rp = { id: xo.rp.id, a: String(xo.rp.a || '').substring(0, 40), s: String(xo.rp.s || '').substring(0, 200), k: String(xo.rp.k || '').substring(0, 20) }; } catch (e) {} }
         else if (dm.xs) dm.once = true; // no se pudo abrir: por si era «ver una vez», se trata como tal (nunca al revés)
         delete dm.xs;
         var go = function() { self._dispatchFileComplete(fileId, r[0].b64, dm, null, true); };
