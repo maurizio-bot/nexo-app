@@ -21,6 +21,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **SIGUIENTE (aprobado por el dueño 27-11, NO subir hasta que él lo diga):** cabecera del chat/grupo «propuesta B» de `docs/PENDIENTES.md`
+  (27-11 tarde): foto = ver la foto (+ «Cambiar foto» en grupo); nombre › = página «Información» con todas las opciones; se quita la rueda.
 - **APK 3170 PASÓ (27-11 13:34 México)** con todo lo de abajo (fase 1 relés + ráfagas + fotos con ajuste + eliminar para todos en grupos + lo de Austin).
 - **28-11 (Opus) — FASE 1 INTERNET, PRIMER BLOQUE HECHO (relés):** política de relés ÚNICA app/nativo
   (`src/core/ruta/politica_reles.js` = `RelayPolicy.kt`, mismos vectores `tests/vectores/politica_reles.json`; `politicareles.js` y

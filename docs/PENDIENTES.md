@@ -22,7 +22,7 @@ GRUPOS y abre los ajustes del grupo (nombre, foto, miembros, fondo…), sin esas
 3. Prueba en Chromium a 360 px: tocar la foto abre el visor y no el menú; la rueda tiene todas las opciones; contraprueba con la 3170.
 **[DUDA para el dueño]** en 1-a-1 ¿una rueda nueva en la cabecera (el 05-11 quería la cabecera despejada) o las opciones dentro del visor de
 la foto, debajo? Recomiendo la rueda: el mismo sitio en chats y grupos.
-**Dueño 27-11:** «parejo en ambos, pero menos botones mejor». Propuesta B (recomendada, espera su sí): SIN rueda en ninguno. Foto = ver la
+**Dueño 27-11:** «parejo en ambos, pero menos botones mejor». Propuesta B — **APROBADA por el dueño 27-11 («Me gusta»); hacerla en la siguiente sesión, sin subir hasta que él diga**: SIN rueda en ninguno. Foto = ver la
 foto (y «Cambiar foto» en grupo). Tocar el NOMBRE = página «Información» (como WhatsApp) con todo: en 1-a-1 cambiar nombre (hoy el nombre es
 un campo que se edita al tocarlo), buscar, destacados, temporales, silenciar, bloquear; en grupo, además lo de la rueda de hoy (nombre, foto,
 miembros, fondo, salir). Se quita la rueda del grupo. Un «›» pequeño junto al nombre para que se note que se toca. Cabecera: ← · foto · nombre ›
