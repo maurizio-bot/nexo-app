@@ -21,6 +21,9 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **PREGUNTAS DEL DUEÑO SIN RESPONDER (página de privacidad de Nexbeat, de la sesión cerrada del 26-11):** (1) correo público de contacto
+  (uno solo para la app); (2) crear repo público `nexbeat` en GitHub (luego Settings → Pages → `main`/raíz) y avisar para subir la página;
+  (3) ¿pasar `docs/diagnosticos.json` (con NEXO ID) al repo privado? Recomendado: sí (la política dice que se guardan en privado).
 - **DECISIÓN DEL DUEÑO 28-11 ~07:00 México — CONEXIONES SÓLIDAS, UNA A LA VEZ** (tras `docs/AUDITORIA_CONEXIONES_28-11.md`: las 4 áreas
   «parchado/frágil»). Orden aprobado: (0) contrato común de los caminos + diseño del cambio entre caminos EN PAPEL
   (`docs/CONTRATO_CAMINOS_28-11.md`, en curso) → (1) internet → (2) Bluetooth (`docs/PLAN_BLUETOOTH_28-11.md`, en curso) → (3) Wi-Fi
