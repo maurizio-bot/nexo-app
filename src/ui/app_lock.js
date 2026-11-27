@@ -84,7 +84,7 @@ function _showLock() {
   if (_overlay()) { _keepLockOnTop(); return; }
   var o = document.createElement('div');
   o.id = 'nexo-lock';
-  o.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:var(--nx-bg,#070812);color:var(--nx-text,#f4f5fb);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:inherit;padding:24px;box-sizing:border-box;text-align:center;';
+  o.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:var(--nx-bg,#000);color:var(--nx-text,#f4f5fb);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;font-family:inherit;padding:24px;box-sizing:border-box;text-align:center;';
   o.innerHTML = '<div style="font-size:56px;">🔒</div>' +
     '<div style="font-size:22px;font-weight:800;letter-spacing:-0.3px;">' + t('prof_lock_locked', 'NEXO está bloqueado') + '</div>' +
     '<div id="nexo-lock-msg" style="font-size:14px;color:var(--nx-muted);min-height:20px;">' + t('prof_lock_use_fp', 'Usa tu huella o el PIN del teléfono') + '</div>' +

@@ -60,7 +60,7 @@ function _injectStyles() {
   if (document.getElementById('nexo-bat-overlay-styles')) return;
   var style = document.createElement('style');
   style.id = 'nexo-bat-overlay-styles';
-  style.textContent = '#nexo-bat-overlay { position: fixed; inset: 0; background: var(--nx-bg,#070812); z-index: 2147483646; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); }'
+  style.textContent = '#nexo-bat-overlay { position: fixed; inset: 0; background: var(--nx-bg,#000); z-index: 2147483646; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(8px); }'
     + ' #nexo-bat-overlay .bat-in { background: var(--nx-sheet); border: 1px solid var(--nx-line); border-radius: var(--nx-radius); padding: 30px 26px; max-width: 360px; width: 90%; text-align: center; color: #fff; box-shadow: none; box-sizing: border-box; }'
     + ' #nexo-bat-overlay .bat-icon { font-size: 54px; margin-bottom: 10px; }'
     + ' #nexo-bat-overlay h2 { margin: 0 0 12px; font-size: 22px; font-weight: 800; letter-spacing: -0.3px; color: #fff; }'

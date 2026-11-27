@@ -5,7 +5,7 @@
  * desde JS con estilos en línea: aquí se igualan con !important (los colores y formas; la lógica no cambia).
  */
 :root {
-  --nx-bg: #070812;
+  --nx-bg: #000; /* dueño 27-11: negro puro en toda la app (antes #070812, azul casi negro, desde la 3140) */
   --nx-surface: rgba(255, 255, 255, 0.06);
   --nx-surface-2: rgba(255, 255, 255, 0.1);
   --nx-glass: rgba(16, 17, 34, 0.72);

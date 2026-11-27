@@ -445,7 +445,7 @@ function _mountInputBar(bar) {
   if (!area) return false;
   bar.style.position = 'absolute'; bar.style.left = '10px'; bar.style.right = '10px'; bar.style.bottom = '100%';
   bar.style.margin = '0 0 4px'; bar.style.boxSizing = 'border-box'; bar.style.zIndex = '1';
-  bar.style.background = 'linear-gradient(rgba(255,255,255,0.08), rgba(255,255,255,0.08)), var(--nx-bg, #070812)'; // el mismo tono, opaco
+  bar.style.background = 'linear-gradient(rgba(255,255,255,0.08), rgba(255,255,255,0.08)), var(--nx-bg, #000)'; // el mismo tono, opaco
   area.appendChild(bar);
   _inputBarSpace();
   return true;

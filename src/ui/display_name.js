@@ -74,7 +74,7 @@ function _injectStyles() {
   var s = document.createElement('style');
   s.id = 'nexo-name-styles';
   s.textContent = '#nexo-name-overlay { position: fixed; inset: 0; z-index: 2147483647; display: flex; align-items: center; justify-content: center; padding: 18px; box-sizing: border-box;'
-    + ' background: var(--nx-bg,#070812); }'
+    + ' background: var(--nx-bg,#000); }'
     + ' #nexo-name-overlay .nm-in { width: 100%; max-width: 370px; display: flex; flex-direction: column; color: #fff; text-align: center; box-sizing: border-box; }'
     + ' #nexo-name-overlay .nm-icon { font-size: 54px; line-height: 1; margin: 2px 0 12px; }'
     + ' #nexo-name-overlay .nm-title { font-size: 26px; font-weight: 800; letter-spacing: -0.3px; margin: 0 0 10px; background: linear-gradient(90deg,#fff 30%,#b9c4ff); -webkit-background-clip: text; background-clip: text; color: transparent; }'

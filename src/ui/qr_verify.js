@@ -43,7 +43,7 @@ function _overlay(id) {
   if (old) old.remove();
   var o = document.createElement('div');
   o.id = id;
-  o.style.cssText = 'position:fixed;inset:0;z-index:10050;background:var(--nx-bg,#070812);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;color:#fff;font-size:14px;text-align:center;';
+  o.style.cssText = 'position:fixed;inset:0;z-index:10050;background:var(--nx-bg,#000);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px;color:#fff;font-size:14px;text-align:center;';
   document.body.appendChild(o);
   return o;
 }

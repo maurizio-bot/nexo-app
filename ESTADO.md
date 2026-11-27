@@ -26,7 +26,8 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 - **HECHO en la rama, VA EN LA SIGUIENTE APK (dueño 27-11: «pantallas encimadas al cambiar la foto del grupo»):** el ajuste de la foto
   (`avatar_crop.js`) quedaba DEBAJO de la hoja de Perfil y de la de ajustes del grupo (z 10050 vs 2147483646) → ahora encima; `cabecera.js`
   comprueba que se ve encima. **Fondo del chat (#070812, no #000):** no cambió de la 3167 a la 3170 (sin cambios de estilos); viene de la
-  3140 (16-11, «fondo liso como Contactos»). Pregunta al dueño si lo quiere negro puro #000.
+  3140 (16-11, «fondo liso como Contactos»). **Dueño: negro puro en toda la app → HECHO en la rama (`--nx-bg: #000`).** Más pedidos para la siguiente sesión en
+  `docs/PENDIENTES.md` «27-11 tarde (2)»: tarjetas en la lista de chats y tarjeta de un miembro del grupo (mensaje, llamar, info, agregar).
 - **APK 3170 PASÓ (27-11 13:34 México)** con todo lo de abajo (fase 1 relés + ráfagas + fotos con ajuste + eliminar para todos en grupos + lo de Austin).
 - **28-11 (Opus) — FASE 1 INTERNET, PRIMER BLOQUE HECHO (relés):** política de relés ÚNICA app/nativo
   (`src/core/ruta/politica_reles.js` = `RelayPolicy.kt`, mismos vectores `tests/vectores/politica_reles.json`; `politicareles.js` y
