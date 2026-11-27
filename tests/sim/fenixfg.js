@@ -39,7 +39,17 @@ const { importSrc } = require('./srcmod');
   await fx._putSeg('nxa0000002', 'AA:BB:CC:DD:EE:02', { id: 'g2', ts: 1, med: 1, ref: 'nexo_att_g2', bh: 'x', holders: {} });
   r.segundo_plano_manda = sent === 1;
 
-  const ok = r.primer_plano_pausa && r.segundo_plano_corre && r.sin_senal_corre && r.null_corre && r.cero_corre && r.truthy_no_pausa && r.carrera_disco_vs_frente_no_manda && r.segundo_plano_manda
+  // 3352 (dueño 27-11, diag. S24 21:53): un respaldo Fénix YA EN VUELO (ChatStream) cede en cuanto la app vuelve al frente, por
+  // cualquier camino; lo del usuario nunca cede por esto. Contraprueba: en segundo plano y sin relés limitando, sigue.
+  const { ChatStream } = await importSrc('ui/chat_stream.js');
+  const y = (meta, dev, fg, lim) => ChatStream.prototype._bgShouldYieldNet.call({ meta, deviceId: dev, ble: { _foreground: fg, net: { relayLimitedRecently: () => lim } } });
+  r.envuelo_frente_bt_cede = y({ type: 'fenix' }, 'AA:BB:CC:DD:EE:01', true, false) === true;
+  r.envuelo_frente_net_cede = y({ type: 'fenix' }, 'net:nxa0000001', true, false) === true;
+  r.envuelo_fondo_sigue = y({ type: 'fenix' }, 'net:nxa0000001', false, false) === false && y({ type: 'fenix' }, 'AA:BB:CC:DD:EE:01', false, true) === false;
+  r.envuelo_fondo_net_limita_cede = y({ type: 'fenix' }, 'net:nxa0000001', false, true) === true;
+  r.usuario_no_cede = y({ type: 'file' }, 'net:nxa0000001', true, true) === false && y(undefined, 'AA:BB:CC:DD:EE:01', true, false) === false;
+
+  const ok = r.envuelo_frente_bt_cede && r.envuelo_frente_net_cede && r.envuelo_fondo_sigue && r.envuelo_fondo_net_limita_cede && r.usuario_no_cede && r.primer_plano_pausa && r.segundo_plano_corre && r.sin_senal_corre && r.null_corre && r.cero_corre && r.truthy_no_pausa && r.carrera_disco_vs_frente_no_manda && r.segundo_plano_manda
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('FENIXFG ' + JSON.stringify(r));
   process.exit(ok ? 0 : 1);

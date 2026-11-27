@@ -560,11 +560,15 @@ export class BleAckSystem {
     return p;
   }
   // Jump: un puente reenvía un paquete tal cual y espera la confirmación del siguiente salto
-  sendRawWithRetry(deviceId, packet, msgId) {
+  // 3354 (dueño 27-11, diag. S24 21:53/23:33: 6 paquetes de puente ×5 reintentos seguidos, cada 10 min, gastando el cupo de los relés):
+  // opts.maxRetries / opts.ackWaitMs: el puente manda cada paquete con su propio calendario (ble_relay._hopFail) y no 5 veces seguidas
+  sendRawWithRetry(deviceId, packet, msgId, opts) {
     var self = this;
     return new Promise(function(resolve, reject) {
       var entry = { msgId: msgId, deviceId: deviceId, content: packet, raw: true, quiet: true,
         resolve: resolve, reject: reject, retries: 0, timer: null, sentAt: Date.now() };
+      if (opts && typeof opts.maxRetries === 'number') entry.maxRetries = opts.maxRetries;
+      if (opts && opts.ackWaitMs > 0) entry.ackWaitMs = opts.ackWaitMs;
       var prev = self.pendingAcks.get(msgId);
       if (prev) { clearTimeout(prev.timer); prev.reject(new Error('reemplazado')); }
       self.pendingAcks.set(msgId, entry);
@@ -621,7 +625,8 @@ export class BleAckSystem {
       self.pendingAcks.delete(entry.msgId);
       return;
     }
-    var delay = SHORT_MSG_BACKOFF_DELAYS[Math.min(entry.retries, SHORT_MSG_BACKOFF_DELAYS.length - 1)];
+    var delay = entry.ackWaitMs || SHORT_MSG_BACKOFF_DELAYS[Math.min(entry.retries, SHORT_MSG_BACKOFF_DELAYS.length - 1)];
+    var maxR = typeof entry.maxRetries === 'number' ? entry.maxRetries : self.maxRetries;
     var sendP = entry.raw ? self.ble._sendRawNative(entry.deviceId, entry.content)
       : self.ble._sendMessageNative(entry.deviceId, entry.content, entry.msgId, undefined, entry.dst);
     var tOut = Date.now();
@@ -653,9 +658,9 @@ export class BleAckSystem {
           if (!entry.quiet) self._dispatchStatus(entry.msgId, 'pending');
           return;
         }
-        if (entry.retries < self.maxRetries) {
+        if (entry.retries < maxR) {
           entry.retries++;
-          console.warn('[BleAckSystem] Envio nativo fallo msgId=' + entry.msgId + ', reintento ' + entry.retries + '/' + self.maxRetries);
+          console.warn('[BleAckSystem] Envio nativo fallo msgId=' + entry.msgId + ', reintento ' + entry.retries + '/' + maxR);
           setTimeout(function() { self._doSend(entry); }, delay);
         } else {
           self.pendingAcks.delete(entry.msgId);
@@ -669,9 +674,10 @@ export class BleAckSystem {
   _onAckTimeout(msgId) {
     var entry = this.pendingAcks.get(msgId);
     if (!entry) return;
-    if (entry.retries < this.maxRetries) {
+    var maxR = typeof entry.maxRetries === 'number' ? entry.maxRetries : this.maxRetries;
+    if (entry.retries < maxR) {
       entry.retries++;
-      console.log('[BleAckSystem] ACK timeout msgId=' + msgId + ' reintento ' + entry.retries + '/' + this.maxRetries);
+      console.log('[BleAckSystem] ACK timeout msgId=' + msgId + ' reintento ' + entry.retries + '/' + maxR);
       // 17: por internet, la confirmación pudo perderse en el reparto en vivo de los relés: se les vuelve a pedir lo reciente
       if (_isNetDevice(entry.deviceId) && this.ble && this.ble.net && typeof this.ble.net.resync === 'function') { try { this.ble.net.resync(msgId, (entry.sentAt || Date.now()) - 5000); } catch (e) {} }
       this._doSend(entry);

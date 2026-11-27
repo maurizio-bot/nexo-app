@@ -43,6 +43,10 @@ export function wdPlan(bytes, netKbps) {
   var tNet = kb / Math.max(0.1, netKbps > 0 ? netKbps : NET_KBPS_PRIOR), tWd = WD_SETUP_S + kb / WD_KBPS;
   return { use: tWd * 1.5 < tNet && tNet - tWd >= 3, tNet: Math.round(tNet * 10) / 10, tWd: Math.round(tWd * 10) / 10 };
 }
+// 3356 (dueño 27-11: «no cortar un envío mientras avance»; diag. 23-11: Wi-Fi Direct a 2,9 KB/s de principio a fin): el plazo del envío ya
+// no supone 100 KB/s (un envío lento que avanzaba se cortaba a mitad). Es solo un respaldo a 2 KB/s: lo que corta de verdad un envío
+// parado es el nativo, por inactividad (el que recibe lee con plazo por lectura y cierra; el que manda espera la confirmación 60 s).
+var WD_BACKSTOP_BPMS = 2; // bytes por ms = 2 KB/s
 var WD_READY_TTL_MS = 45000;
 var OFFER_TIMEOUT_MS = 25000;
 export var WD_ACK_WAIT_MS = 20000;   // T-E1: quien recibe tiene el socket abierto hasta esto esperando a descifrarlo (nativo: WD_ACK_WAIT_MS)
@@ -397,12 +401,11 @@ export class WifiDirect {
           e2eDecryptText(c).then(function(r) {
             var cr = JSON.parse(r.text);
             console.log('[WIFI-DIRECT] Enviando ' + fileId + ' (' + Math.round(data.length / 1024) + ' KB) a ' + peer);
-            // Tope: unirse al grupo (~20 s) + el contenido a 100 KB/s como mínimo + lo que el otro tarda en descifrarlo antes de
-            // confirmar (T-E1, WD_ACK_WAIT_MS)
+            // Tope: unirse al grupo (~20 s) + el contenido a WD_BACKSTOP_BPMS + lo que el otro tarda en descifrarlo antes de confirmar (T-E1)
             var sendTimer = null;
             return Promise.race([
               _plugin().wifiDirectSend({ ssid: cr.s, passphrase: cr.p, port: cr.o, transferId: fileId, data: data, token: typeof cr.t === 'string' ? cr.t : '', jsTs: Date.now() }),
-              new Promise(function(res, rej) { sendTimer = setTimeout(function() { rej(new Error('envío sin terminar')); }, 30000 + WD_ACK_WAIT_MS + Math.round(data.length / 100)); })
+              new Promise(function(res, rej) { sendTimer = setTimeout(function() { rej(new Error('envío sin terminar')); }, 30000 + WD_ACK_WAIT_MS + Math.round(data.length / WD_BACKSTOP_BPMS)); })
             ]).then(function(v) { clearTimeout(sendTimer); return v; }, function(e) { clearTimeout(sendTimer); throw e; });
           }).then(function(res) {
             var sec = function(ms) { return Math.round((ms || 0) / 100) / 10 + ' s'; };

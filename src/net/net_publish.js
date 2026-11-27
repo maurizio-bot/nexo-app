@@ -17,6 +17,12 @@ var BAN_COOL_MS = 600000, BAN_COOL_MAX_MS = 7200000;       // «banned»: 10 min
 var POLICY_COOL_MS = 6 * 3600000;                          // no nos deja publicar (web of trust, pago, prueba de trabajo…): 6 h
 var LIMIT_FORGET_MS = 1800000;                             // sin otro «no» en 30 min, la pausa vuelve a empezar desde abajo
 var LIMIT_CALM_MS = 300000, BULK_EV_CHARS = 4000, BULK_GAP_MS = 1200; // tras un límite, 5 min con un respiro de 1,2 s entre eventos pesados
+// 3357 (dueño 27-11, docs/ENRUTADO_27-11.md §4: «cupo por relé: contar sobres/min y no acercarse al límite; lo pesado repartido»): diag. S24
+// 21:53 y 23:33, Fénix y archivos subían decenas de sobres de golpe y los relés limitaban/castigaban. Se cuentan los sobres que salen
+// (cada uno va a todos los relés abiertos: es la cuenta de cada relé); con QUOTA_PER_MIN en el último minuto, lo PESADO espera su turno
+// repartido (uno cada 60/cupo s). Los textos y señales nunca esperan (cuentan, pero salen ya). Tras un límite (5 min) el cupo baja a
+// QUOTA_CALM_PER_MIN; sin límites, QUOTA_PER_MIN (≈ el ritmo que ya tenía un archivo grande: no se frena lo normal).
+var QUOTA_PER_MIN = 90, QUOTA_CALM_PER_MIN = 30, QUOTA_WIN_MS = 60000;
 export function relayLimitKind(msg) {
   var m = String(msg || '');
   if (/^(duplicate|invalid|auth-required|error):/i.test(m)) return '';
@@ -52,6 +58,24 @@ export const netPublish = {
     try { if (typeof this._spareCheck === 'function') this._spareCheck(); } catch (e) {}
   },
   // 3348: tras un límite, cuánto debe esperar este evento PESADO (0: sale ya). Reserva su turno.
+  _isBulkEv(ev) { return !!ev && (ev.kind === BLOB_KIND || (typeof ev.content === 'string' && ev.content.length >= BULK_EV_CHARS)); },
+  _quotaNote() {
+    var now = Date.now(), t = this._pubTimes || (this._pubTimes = []);
+    t.push(now);
+    while (t.length && now - t[0] > QUOTA_WIN_MS) t.shift();
+  },
+  // 3357: cuánto debe esperar un sobre PESADO para no pasar de QUOTA_PER_MIN por minuto (0 = sale ya)
+  _quotaWait(ev) {
+    if (!this._isBulkEv(ev)) return 0;
+    var now = Date.now(), t = this._pubTimes || [];
+    while (t.length && now - t[0] > QUOTA_WIN_MS) t.shift();
+    var cap = this.relayLimitedRecently() ? QUOTA_CALM_PER_MIN : QUOTA_PER_MIN, gap = QUOTA_WIN_MS / cap;
+    if (t.length < cap && now >= (this._quotaNextAt || 0)) return 0;
+    var at = Math.max(now, this._quotaNextAt || 0, t.length >= cap ? t[t.length - cap] + QUOTA_WIN_MS : 0);
+    this._quotaNextAt = at + gap;
+    if (!this._quotaSaid || now - this._quotaSaid > 30000) { this._quotaSaid = now; console.log('[NET] Cupo de los relés: ' + t.length + ' sobres en el último minuto; lo pesado sale repartido (uno cada ' + Math.round(gap / 100) / 10 + ' s)'); } // i18n-ok: registro
+    return at - now;
+  },
   _bulkWait(ev) {
     if (!ev || typeof ev.content !== 'string' || ev.content.length < BULK_EV_CHARS) return 0;
     var now = Date.now();
@@ -166,10 +190,15 @@ export const netPublish = {
   // graceX (3193, datos móviles: 2 copias): el margen para los demás es al menos lo que tardó el primero (× graceX); con la subida lenta
   // de los datos las dos copias tardan parecido y un margen fijo de 1,5 s daba por perdida la segunda y subía una tercera
   publishEach(ev, timeoutMs, opts) {
+    var self = this, qw = (opts && opts.only && self._ownList && self._ownList().length && opts.only.every(function(u) { return self._isOwn && self._isOwn(u); })) ? 0 : self._quotaWait(ev); // 3357: al relé propio no
+    if (qw > 0) return new Promise(function(res) { setTimeout(res, qw); }).then(function() { return self._publishEachNow(ev, timeoutMs, opts); });
+    return self._publishEachNow(ev, timeoutMs, opts);
+  },
+  _publishEachNow(ev, timeoutMs, opts) {
     var self = this, only = opts && opts.only, t0 = Date.now();
     return new Promise(function(resolve) {
       var open = [], now0 = Date.now();
-      self.relays.forEach(function(r, u) { if (r.open && !r.gw && (!only || only.indexOf(u) >= 0) && !self.relayCooling(r, now0)) open.push({ r: r, u: u }); }); // 3348: no a los que están en pausa
+      self.relays.forEach(function(r, u) { if (r.open && !r.gw && !r.lo && (!only || only.indexOf(u) >= 0) && !self.relayCooling(r, now0)) open.push({ r: r, u: u }); }); // 3348: no a los que están en pausa; 3355: ni a los de solo escucha
       // Sin relés propios: un trozo del buzón de archivos sale por los puentes (parte 3; el puente lo acota por bytes). Lo demás
       // (borrados, el canal de diagnósticos…) no pasa por un puente. Se informa la URL del relé de verdad (va en el puntero).
       var viaGw = false;
@@ -178,6 +207,7 @@ export const netPublish = {
         self.relays.forEach(function(r) { if (r.open && r.gw && r.realUrl && !open.some(function(o) { return o.u === r.realUrl; }) && (!self.gw || typeof self.gw.blobRelayOk !== 'function' || self.gw.blobRelayOk(r))) open.push({ r: r, u: r.realUrl }); });
       }
       if (!open.length) { resolve([]); return; }
+      self._quotaNote();
       var oks = [], left = open.length, done = false, grace = null;
       var enough = opts && opts.enough ? Math.min(opts.enough, open.length) : open.length;
       if (viaGw && opts && opts.enough) enough = 1; // puente parte 4: un relé (por cualquier puente) ya lo tiene; los demás, con margen
@@ -215,7 +245,7 @@ export const netPublish = {
   // only (3151): solo a esos relés (lo pesado al relé propio, net_own.js); sin only, a todos los abiertos como siempre
   // 3348: tras un límite, lo pesado espera su turno (lo pequeño sale ya)
   _publish(ev, only) {
-    var self = this, wait = only ? 0 : self._bulkWait(ev); // al relé propio (only) no: no limita
+    var self = this, wait = only ? 0 : Math.max(self._bulkWait(ev), self._quotaWait(ev)); // al relé propio (only) no: no limita; 3357: cupo
     if (wait > 0) return new Promise(function(res) { setTimeout(res, wait); }).then(function() { return self._publishNow(ev, only); });
     return self._publishNow(ev, only);
   },
@@ -223,10 +253,11 @@ export const netPublish = {
     var self = this;
     return new Promise(function(resolve, reject) {
       var open = [], cooling = [], now0 = Date.now();
-      self.relays.forEach(function(r, u) { if (r.open && (!only || only.indexOf(u) >= 0)) { if (self.relayCooling(r, now0)) cooling.push(r); else open.push(r); } });
+      self.relays.forEach(function(r, u) { if (r.open && !r.lo && (!only || only.indexOf(u) >= 0)) { if (self.relayCooling(r, now0)) cooling.push(r); else open.push(r); } }); // 3355: los de solo escucha no publican
       // 3348: todos los abiertos en pausa → pendiente ya, sin mandarles nada (cada sobre más sería otra infracción)
       if (!open.length && cooling.length) { reject(self._allCoolingErr(cooling)); return; }
       if (!open.length) { reject(Object.assign(new Error('Sin relés'), { code: 'NET_DOWN' })); return; }
+      self._quotaNote();
       var left = open.length, done = false, why = '';
       // L3 (auditoría 28-10): al cerrar la promesa (OK, rechazo o timeout) se quita ev.id de TODOS los relés abiertos;
       // antes solo lo borraba el que contestaba OK, y con un relé que acepta pero nunca manda OK, r.waits crecía toda la

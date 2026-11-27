@@ -18,7 +18,9 @@ var RELAY_DEAD_FAILS = 2;
 // los dos teléfonos), saltando los caídos; y cada trozo del buzón de archivos se sube a CELL_BLOB_COPIES relés. Con Wi-Fi, como antes.
 // CELL_SETTLE_MS: uno de los preferidos que está conectando (aún no abre) se espera hasta esto antes de escuchar en el siguiente
 // (si no, al reconectar todos a la vez, el primero que abre —cualquiera— pediría la ventana reciente y luego se soltaría).
-var CELL_READ_RELAYS = 2;
+// 3355 (dueño 27-11, docs/ENRUTADO_27-11.md §5: «no autolimitarse»): con datos se escuchan TODOS los abiertos (antes 2: lo que el otro
+// publicaba en un tercero no llegaba hasta volver al Wi-Fi). Se mide el gasto y luego se bajan repetidos, sin cerrar puertas.
+var CELL_READ_RELAYS = 99;
 var CELL_BLOB_COPIES = 2;
 var CELL_SETTLE_MS = 3000;
 // 3151 (dueño 16-11: «NEXO tendrá su PROPIO servidor de relé, de pago, para que mensajes y archivos vayan tan rápido como en WhatsApp;

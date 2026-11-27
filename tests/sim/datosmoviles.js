@@ -1,3 +1,5 @@
+// 3355 (dueño 27-11, docs/ENRUTADO_27-11.md §5): con datos móviles se ESCUCHAN TODOS los relés abiertos (ya no 2: lo que el otro publicaba
+// en un tercero no llegaba); las 2 copias por trozo del buzón de archivos siguen. Lo de abajo es la historia de 3193.
 // 3193 (dueño 17-11: «Ok» a 2 conexiones y 2 copias con datos móviles). Diagnóstico del S24 del mismo día: con datos móviles, en
 // 116 min bajó de los relés 2,5 MB en 1896 eventos y 1723 eran «ya vistos» (1,5 MB repetidos): cada evento llega por CADA relé suscrito
 // y, tras cada cambio de red, cada relé vuelve a mandar la ventana reciente; una nota de voz de 97 KB tardó 14,3 s en subir porque cada
@@ -134,7 +136,7 @@ const settled = (p, n) => () => { const s = subs(p); return s.open === RELAYS.le
 
   // ---- F1: los dos con datos móviles: escuchan 2; textos + cambio de red ----
   setNet(A, 'cell'); setNet(B, 'cell');
-  const want = Math.min(2, RELAYS.length);
+  const want = RELAYS.length; // 3355 (dueño 27-11): con datos se escuchan TODOS (antes 2)
   r.F1_asentado_s = await waitFor(() => settled(A, want)() && settled(B, want)(), 30000);
   await sleep(4000);
   r.F1_suscripciones = { A: subs(A), B: subs(B) };
@@ -210,7 +212,7 @@ const settled = (p, n) => () => { const s = subs(p); return s.open === RELAYS.le
   const l4 = logs.length;
   await fx.stop();
   r.F4_cae = RN(firstU);
-  r.F4_B_pasa_al_siguiente_s = await waitFor(() => { const s = subs(B); return s.sub === want && s.escucha.indexOf(RN(firstU)) < 0; }, 15000);
+  r.F4_B_pasa_al_siguiente_s = await waitFor(() => { const s = subs(B); return s.sub === want - 1 && s.escucha.indexOf(RN(firstU)) < 0; }, 15000); // 3355: sigue en los demás
   r.F4_B_escucha = subs(B).escucha;
   r.F4_A_escucha = subs(A).escucha;
   r.F4_A_a_B_s = await sendWait(A, B, idB, idA, 'con un relé caído, de A');
@@ -225,7 +227,7 @@ const settled = (p, n) => () => { const s = subs(p); return s.open === RELAYS.le
   const noOye = RELAYS.filter((u) => subs(B).escucha.split(',').indexOf(RN(u)) < 0);
   r.F5_B_no_escucha = noOye.map(RN).join(',');
   const pubOrig = net(A)._publish;
-  net(A)._publish = function (ev, only) { return pubOrig.call(this, ev, only || noOye); }; // a A solo le abren esos
+  if (noOye.length) net(A)._publish = function (ev, only) { return pubOrig.call(this, ev, only || noOye); }; // a A solo le abren esos (3355: con todos escuchados no queda ninguno)
   const t5 = 'solo en los relés que B no escucha';
   sendText(A, t5);
   r.F5_con_datos_llega_s = await waitFor(got(B, idA, t5), 8000);
@@ -275,8 +277,8 @@ const settled = (p, n) => () => { const s = subs(p); return s.open === RELAYS.le
   r.errores = logs.filter((l) => / error: /.test(l) && !/JSDOMERROR|styles\.css|Not implemented|GLOBAL TIMEOUT|net::ERR|fetch/.test(l)).slice(0, 5);
   const F1 = r.F1_bajado;
   r.ahorro = {
-    escucha_2: r.F1_suscripciones.A.sub === want && r.F1_suscripciones.B.sub === want && r.F1_suscripciones.A.open === RELAYS.length && r.F1_suscripciones.A.escucha === r.F1_suscripciones.B.escucha,
-    repetidos: F1.repetidos <= 3 * F1.nuevos,
+    escucha_todos: r.F1_suscripciones.A.sub === want && r.F1_suscripciones.B.sub === want && r.F1_suscripciones.A.open === RELAYS.length && r.F1_suscripciones.A.escucha === r.F1_suscripciones.B.escucha,
+    repetidos: F1.repetidos <= 7 * F1.nuevos, // 3355: con todos escuchados cada evento llega por cada relé (~5,5× medido); se mide para bajarlos luego, el tope solo frena un bucle
     copias_2: !!r.F2_copias_por_trozo && r.F2_copias_por_trozo.split(',').every((x) => x === '2'),
     subida: r.F2_subido_por_kb_de_archivo <= 3.2, // 2 copias en base64 (×1,33) ≈ 2,7; 4 copias ≈ 5,4
   };

@@ -145,22 +145,55 @@ export function blobPointerIn(content, ctrl) {
 
 // ---------- emisor: cifrar una vez, partir, publicar con réplica, armar el puntero ----------
 // net: NetLink (randomKey, blobEvent, publishEach). Devuelve { pointer, outRecord: { sk, ids, relays, expires }, replication }.
+// 3356 (dueño 27-11: «no cortar un envío mientras avance… y seguir desde donde iba»): antes un trozo que ningún relé guardaba tiraba TODA
+// la subida y el reintento empezaba de cero (cifrado nuevo, todos los trozos otra vez). Ahora: (a) un trozo que no se guarda se reintenta
+// cada STAGE_RETRY_MS mientras la subida haya avanzado en el último STAGE_STALL_MS (otro trozo guardado); solo sin avance se corta; (b) con
+// opts.resumeKey (el id del archivo) lo ya subido se recuerda y el siguiente intento con los mismos datos SIGUE desde ahí (mismo cifrado
+// y mismos trozos; solo sube lo que falta), mientras los trozos sigan vigentes en los relés.
+var STAGE_STALL_MS = 60000, STAGE_RETRY_MS = 5000, STAGE_KEEP_MS = 6 * 3600000, STAGE_MIN_LEFT_SEC = 86400;
+var _stageCache = new Map();
+function _stageSig(b64) { var s = String(b64 || ''); return s.length + ':' + s.substring(0, 48) + ':' + s.substring(s.length - 48); }
+export function _stageResumeInfo(key) { var c = key && _stageCache.get(key); return c ? { done: c.chunks.filter(Boolean).length, total: c.pieces.length } : null; }
 export async function stageBlob(net, dataB64, opts) {
   var o = opts || {};
   var bytes = _b64ToBytes(dataB64);
   if (bytes.length > MAILBOX_MAX_BYTES) throw Object.assign(new Error('Archivo demasiado grande para el buzón de archivos'), { code: 'BLOB_TOO_BIG' });
-  var enc = await encryptBlob(bytes);                 // 1) cifrar TODO, una vez
-  var hash = await _sha256Hex(enc.ct);                // 2) huella del cifrado
-  var pieces = splitChunks(enc.ct, CHUNK_RAW_BYTES);  // 3) partir el cifrado
-  var sk = net.randomKey();                           // una clave por blob (permite un solo evento de borrado al confirmar)
-  var exp = Math.floor(Date.now() / 1000) + (o.ttlSec || BLOB_TTL_SEC);
+  var nowMs = Date.now();
+  _stageCache.forEach(function(v, k) { if (nowMs - v.at > STAGE_KEEP_MS) _stageCache.delete(k); });
+  var rk = o.resumeKey ? String(o.resumeKey) : '', sig = rk ? _stageSig(dataB64) : '', st = rk ? _stageCache.get(rk) : null;
+  if (st && (st.sig !== sig || st.exp - Math.floor(nowMs / 1000) < STAGE_MIN_LEFT_SEC)) { _stageCache.delete(rk); st = null; }
+  if (!st) {
+    var enc0 = await encryptBlob(bytes);                // 1) cifrar TODO, una vez
+    var pieces0 = splitChunks(enc0.ct, CHUNK_RAW_BYTES); // 3) partir el cifrado
+    st = { sig: sig, enc: enc0, hash: await _sha256Hex(enc0.ct) /* 2) huella del cifrado */, pieces: pieces0,
+      sk: net.randomKey() /* una clave por blob (permite un solo evento de borrado al confirmar) */, exp: Math.floor(nowMs / 1000) + (o.ttlSec || BLOB_TTL_SEC),
+      relays: [], chunks: new Array(pieces0.length), ids: new Array(pieces0.length), minRep: Infinity, at: nowMs };
+    if (rk) _stageCache.set(rk, st);
+  } else {
+    console.log('[BLOB] ' + rk + ': sigo la subida desde donde iba (' + st.chunks.filter(Boolean).length + ' de ' + st.pieces.length + ' trozos ya en los relés)'); // i18n-ok: registro
+  }
+  st.at = nowMs;
+  var enc = st.enc, hash = st.hash, pieces = st.pieces, sk = st.sk, exp = st.exp;
   var timeout = o.publishTimeoutMs || 10000;
-  var relays = [], chunks = new Array(pieces.length), ids = new Array(pieces.length), minRep = Infinity;
+  var relays = st.relays, chunks = st.chunks, ids = st.ids;
+  var lastProgress = Date.now();
+  var stallMs = o.stallMs || STAGE_STALL_MS, retryMs = o.retryMs || STAGE_RETRY_MS;
   // Puente a internet, parte 4: sin internet propio, el puente fija trozos a la vez y esperas (Wi-Fi Direct: tandas grandes en
   // un paquete; Bluetooth: un trozo son segundos de radio). Se vuelve a mirar en cada tanda: si Wi-Fi Direct falla, lo que
   // sigue va al ritmo de Bluetooth.
   var tmo = function() { return net.blobPublishMs ? net.blobPublishMs(timeout) : timeout; };
   var publishOne = async function(i) {
+    if (chunks[i]) { if (o.onProgress) o.onProgress(i + 1, pieces.length); return; } // 3356: ya subido en un intento anterior
+    for (;;) {
+      try { await publishTry(i); lastProgress = Date.now(); return; }
+      catch (e) {
+        if (!e || e.code !== 'NET_DOWN' || Date.now() - lastProgress >= stallMs) throw e;
+        console.log('[BLOB] Trozo ' + i + ' sin guardar; la subida avanzó hace ' + Math.round((Date.now() - lastProgress) / 1000) + ' s: lo reintento en ' + Math.round(retryMs / 1000) + ' s'); // i18n-ok: registro
+        await new Promise(function(res) { setTimeout(res, retryMs); });
+      }
+    }
+  };
+  var publishTry = async function(i) {
     var tms = tmo();
     var ev = net.blobEvent(sk, _bytesToB64(pieces[i]), exp);
     // 3151: con el relé propio sano, el trozo va SOLO a él (una copia: en datos móviles no se paga el archivo 3 veces, y sin los
@@ -184,7 +217,7 @@ export async function stageBlob(net, dataB64, opts) {
     ok.forEach(function(u) { if (relays.indexOf(u) < 0) relays.push(u); });
     chunks[i] = { i: i, n: pieces[i].length, id: ev.id, r: ok.map(function(u) { return relays.indexOf(u); }) };
     ids[i] = ev.id;
-    if (ok.length < minRep) minRep = ok.length;
+    if (ok.length < st.minRep) st.minRep = ok.length;
     if (o.onProgress) o.onProgress(i + 1, pieces.length);
   };
   for (var b = 0; b < pieces.length;) {                             // 4) publicar, ritmo acotado
@@ -203,7 +236,8 @@ export async function stageBlob(net, dataB64, opts) {
   var pointer = { v: 1, kind: 'file-pointer', alg: 'AES-256-GCM', k: _bytesToB64(enc.k), nonce: _bytesToB64(enc.nonce), hash: hash,
     size: enc.ct.length, raw: bytes.length, chunk: CHUNK_RAW_BYTES, chunks: chunks, relays: relays, expires: exp };
   if (typeof o.thumb === 'string' && _b64Bytes(o.thumb) <= THUMB_MAX_BYTES) pointer.thumb = o.thumb;
-  return { pointer: pointer, outRecord: { sk: _bytesToB64(sk), ids: ids, relays: relays, expires: exp }, replication: minRep === Infinity ? 0 : minRep };
+  if (rk) _stageCache.delete(rk); // 3356: subido entero: ya no hace falta recordarlo
+  return { pointer: pointer, outRecord: { sk: _bytesToB64(sk), ids: ids, relays: relays, expires: exp }, replication: st.minRep === Infinity ? 0 : st.minRep };
 }
 
 // ---------- receptor: bajar por id, verificar cada trozo, armar, verificar el todo, descifrar ----------

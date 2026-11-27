@@ -446,7 +446,7 @@ export const ackIncoming = {
     // tuviera nada). Una confirmación parcial de OTRO troceado (n distinto) no es de este intento; la final sí vale (lo tiene entero).
     if (!isFinal && total && stream.total && total !== stream.total) return;
     if (msg.bf) this.markBin(stream.deviceId);
-    stream.lastAckAt = Date.now(); stream._downWaitMs = 0;
+    stream.lastAckAt = Date.now(); stream._downWaitMs = 0; stream._storedSince = 0; stream._storedWaitMs = 0; // 3353: el otro confirma: el calendario de «ya guardado» empieza de nuevo
     if (isFinal) {
       console.log('[BleAckSystem] handleFinalAck msgId=' + msgId);
       stream.handleFinalAck();

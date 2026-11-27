@@ -21,6 +21,16 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **28-11 madrugada (Opus): ARREGLOS 1–6 HECHOS, probados y SUBIDOS a NEXOCHAT (APK 3162 nueva; revisar su CI ~85 min).** Cada uno con prueba:
+  1 reenvíos: un trozo de texto que un relé guardó no se republica en 30 min; un calendario (toque, 15→120 s), ⏳ a 10 min (`chat_stream`
+  `_netWindowStored`; `reenvionet.js`). 2 puente: 1 envío por internet / 1 reintento por BT y luego su calendario (`ble_relay`, `ble_ack`
+  opts; `puentereint.js`). 3 Fénix en vuelo cede al volver la app (`_bgShouldYieldNet`; `fenixfg.js`). 4 cupo: 90 sobres pesados/min
+  (30 tras un límite), textos sin espera (`net_publish._quotaWait`; `cuporele.js`). **NO hecho del 4: juntar textos pendientes en un
+  sobre** (con el 1 ya no se republican; queda para el enrutado del domingo). 5 con datos se escuchan todos (CELL_READ_RELAYS 99) y la app
+  escucha los de reserva solo para leer (`r.lo`; `relevo.js` R4 = caso S23 21:53; `datosmoviles.js` adaptado). 6 sin tope de 2 h si
+  avanza; Wi-Fi Direct/L2 respaldo a 2 KB/s (corta el nativo por inactividad); buzón: reintenta el trozo mientras avance y sigue desde
+  donde iba (`blobreanuda.js`). **Pendiente del 6:** avance nativo de Wi-Fi Direct/L2 hacia JS (hoy no hay evento; corte por inactividad).
+  Siguiente: revisión visual severa con capturas a 360 px; domingo 29-11 2:00 (Fable): enrutado por contacto y zombi de la tablet.
 - **27-11 noche (Opus), [skip ci], va en la SIGUIENTE APK:** **responder con un adjunto** (dueño: «deslizo para responder, mando audio y se
   va solo; queda la barra con un mensaje vacío»): nota de voz, foto, archivo (también grande) llevan la cita (`meta.rp`, sellada en `xs`
   por el camino cifrado; `_takeReplyFor` quita la barra; un reenvío no la lleva). `chatactions.js` 1b (voz_*). NOVEDADES: añadir

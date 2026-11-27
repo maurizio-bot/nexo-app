@@ -257,7 +257,9 @@ ChatStream.prototype._start0 = function() {
         if (self.aborted) return;
         // Ronda 2767 (revisión): si sigue avanzando (confirmaciones en el último minuto) se le da más tiempo, hasta 2 h:
         // un vídeo HD o un archivo grande por un Bluetooth lento no terminaba nunca
-        if (Date.now() - (self.lastAckAt || 0) < 60000 && Date.now() - self.startTime < 7200000) { armGlobal(300000); return; }
+        // 3356 (dueño 27-11: «no cortar un envío mientras avance»): sin el tope de 2 h desde el inicio; mientras haya confirmaciones en el
+        // último minuto, sigue (un archivo grande por un camino lento puede tardar más de 2 h y avanzar todo el rato)
+        if (Date.now() - (self.lastAckAt || 0) < 60000) { armGlobal(300000); return; }
         // 3096: texto que el teléfono del otro ya tiene (✓✓) esperando a que su app despierte: no es un fallo (ver PEER_SAFE_*)
         if (self.type === 'chat' && self.peerSafeAt && Date.now() - self.peerSafeAt < PEER_SAFE_MAX_MS && !(self.lastAckAt > self.peerSafeAt)) { armGlobal(60000); return; }
         // #124 (build 2840): el contacto está AUSENTE (sin camino; p. ej. apagado y solo por internet, net.canReach
@@ -389,11 +391,18 @@ ChatStream.prototype._sendWindow = function() {
       // 3350 (diag. S24 26-11 18:21, 3159: con los relés ya limitando, un respaldo Fénix de 251 KB salía por internet en 17 trozos y los
       // textos del usuario se quedaban en «!»): lo de FONDO cede internet mientras dure la calma tras un límite; queda pendiente y Fénix
       // lo reintenta luego (lo del usuario va primero).
-      if (self._bgShouldYieldNet()) { console.log('[ChatStream] Respaldo Fénix por internet con los relés limitando: cede, queda pendiente msgId=' + self.msgId); self._giveUpPending(); return; } // i18n-ok: registro
+      if (self._bgShouldYieldNet()) { console.log('[ChatStream] Respaldo Fénix cede (app a la vista o relés limitando): queda pendiente msgId=' + self.msgId); self._giveUpPending(); return; } // i18n-ok: registro
+      if (self._netStoredRecently(idx)) { // 3353: un relé ya lo tiene: no se republica (se espera el ✓✓)
+        self.sentMask[idx] = true;
+        if (!self._storedSkipLogged) { self._storedSkipLogged = true; console.log('[ChatStream] Ya guardado en un relé hace poco: no se republica, espero ✓✓ msgId=' + self.msgId); } // i18n-ok: registro
+        setTimeout(function() { sendNext(idx + 1); }, 0);
+        return;
+      }
       self.sentMask[idx] = true;
       self._sendChunk(idx)
         .then(function() {
           self._nativeFails = 0; self._busyWaits = 0; // pasó un trozo: la cola drena y el enlace va bien
+          self._noteNetStored(idx);
           setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
         })
         .catch(function(err) {
@@ -480,9 +489,44 @@ ChatStream.prototype._giveUpPending = function() {
 // nativo ya marcó muerto (_bleCongested). El usuario (no-Fénix) nunca entra acá.
 // 3350: ¿un respaldo Fénix por INTERNET debe ceder? Sí si hace poco algún relé dijo que limita o castiga (net_publish.relayLimitedRecently)
 ChatStream.prototype._bgShouldYieldNet = function() {
-  if (!_isFenixTx(this.meta) || !_isNetDevice(this.deviceId)) return false;
+  if (!_isFenixTx(this.meta)) return false;
+  // 3352 (dueño 27-11, diag. S24 21:53: Fénix subía ~3 MB de audios justo al volver a la app y gastaba el cupo de los relés): un respaldo
+  // YA EN VUELO también se para en cuanto la app vuelve al frente (por cualquier camino); queda pendiente y arranca al salir de la app.
+  if (this.ble && this.ble._foreground === true) return true;
+  if (!_isNetDevice(this.deviceId)) return false;
   var net = this.ble && this.ble.net;
   try { return !!(net && typeof net.relayLimitedRecently === 'function' && net.relayLimitedRecently()); } catch (e) { return false; }
+};
+// 3353 (dueño 27-11, diag. S24 23:33 y docs/ENRUTADO_27-11.md §4): por INTERNET, un trozo de texto que un relé YA GUARDÓ no se vuelve a
+// publicar (antes: 2 textos pendientes de 4 trozos ×8 ventanas en 85 s → ~70 sobres y damus «banned»). Se recuerda por mensaje y trozo
+// (también entre vueltas de pendientes) durante NET_STORED_KEEP_MS; mientras, se espera el ✓✓ con un solo calendario y un toque.
+var NET_STORED_KEEP_MS = 30 * 60 * 1000, NET_STORED_WAIT_FIRST_MS = 15000, NET_STORED_WAIT_CAP_MS = 120000, NET_STORED_WAIT_MAX_MS = 10 * 60 * 1000;
+function _netStoredMap(ack) {
+  if (!ack) return null;
+  if (!ack._netStored) ack._netStored = new Map();
+  return ack._netStored;
+}
+ChatStream.prototype._netStoreTracked = function() { return this.type === 'chat' && _isNetDevice(this.deviceId) && !(this.meta && this.meta.dst); };
+ChatStream.prototype._noteNetStored = function(idx) {
+  if (!this._netStoreTracked()) return;
+  var m = _netStoredMap(this.ackSystem); if (!m) return;
+  var now = Date.now();
+  if (m.size > 200) m.forEach(function(v, k) { if (now - v.at > NET_STORED_KEEP_MS) m.delete(k); });
+  var r = m.get(this.msgId);
+  if (!r || now - r.at > NET_STORED_KEEP_MS) { r = { at: now, idx: {} }; m.set(this.msgId, r); }
+  r.idx[idx] = now;
+};
+ChatStream.prototype._netStoredRecently = function(idx) {
+  if (!this._netStoreTracked()) return false;
+  var m = this.ackSystem && this.ackSystem._netStored, r = m && m.get(this.msgId);
+  return !!(r && r.idx[idx] && Date.now() - r.idx[idx] < NET_STORED_KEEP_MS);
+};
+// ¿Todos los trozos sin confirmar de la ventana ya los guardó un relé?
+ChatStream.prototype._netWindowStored = function() {
+  if (!this._netStoreTracked()) return false;
+  var a = this._windowStartAtSend, b = this._windowEndAtSend, any = false;
+  for (var i = a; i < b; i++) { if (this.ackedMask[i]) continue; any = true; if (!this._netStoredRecently(i)) return false; }
+  return any;
 };
 ChatStream.prototype._bgShouldYieldBle = function() {
   var dev = this.deviceId;
@@ -497,7 +541,7 @@ ChatStream.prototype._bgShouldYieldBle = function() {
 ChatStream.prototype._netFileAutoRetryNow = function() {
   try {
     return _netFileAutoRetry(this.type, _isNetDevice(this.deviceId), this._linkUp(),
-      Date.now() - (this.startTime || Date.now()), NET_FILE_AUTORETRY_BUDGET_MS);
+      Date.now() - Math.max(this.startTime || Date.now(), this.lastAckAt || 0), NET_FILE_AUTORETRY_BUDGET_MS); // 3356: 2 h SIN AVANCE (no desde el inicio)
   } catch (e) { return false; }
 };
 // v3.13.0: binario si se puede (no el trozo 0, que lleva los datos del archivo y la miniatura); si no, JSON
@@ -672,6 +716,25 @@ ChatStream.prototype._onWindowTimeout = function() {
       self._giveUpPending();
       return;
     }
+    // 3353: texto por internet que un relé ya guardó entero (lo de esta ventana): NO se reenvía la ventana ni se gasta reintento. Un solo
+    // calendario: toque al otro y revisar en 15 → 30 → 60 → 120 s; a los NET_STORED_WAIT_MAX_MS queda ⏳ (la cola de pendientes no lo
+    // republica mientras el relé lo guarde: solo toque). Si el otro pide lo que le falta (NACK) o confirma, sigue lo de siempre.
+    if (self._netWindowStored()) {
+      var nowW = Date.now();
+      if (!self._storedSince) self._storedSince = nowW;
+      if (nowW - self._storedSince >= NET_STORED_WAIT_MAX_MS) {
+        console.log('[ChatStream] Texto guardado en el relé sin ✓✓ en ' + Math.round(NET_STORED_WAIT_MAX_MS / 60000) + ' min: queda pendiente (no se republica) msgId=' + self.msgId); // i18n-ok: registro
+        try { self.ackSystem._dispatchStatus(self.msgId, 'pending'); } catch (e) {}
+        self._giveUpPending();
+        return;
+      }
+      self._storedWaitMs = Math.min(Math.max((self._storedWaitMs || 0) * 2, NET_STORED_WAIT_FIRST_MS), NET_STORED_WAIT_CAP_MS);
+      try { var _cidW = self.ackSystem._resolveNexoId(self.deviceId); if (_cidW && self.ble && self.ble.net && typeof self.ble.net.wakeKeepAlive === 'function') self.ble.net.wakeKeepAlive(_cidW); } catch (e) {}
+      console.log('[ChatStream] Texto ya guardado en un relé: no reenvío, toque al otro y reviso en ' + Math.round(self._storedWaitMs / 1000) + ' s msgId=' + self.msgId); // i18n-ok: registro
+      self._startWindowTimer(self._storedWaitMs);
+      return;
+    }
+    self._storedWaitMs = 0;
     self.windowRetryCount++;
     // 3044: respaldo Fénix con el enlace vivo y ni un trozo confirmado → la app del otro duerme: se rinde (ver FENIX_SILENT_RETRIES)
     if (self.meta && self.meta.type === 'fenix' && self.windowStart === 0 && self.windowRetryCount >= FENIX_SILENT_RETRIES) {
@@ -813,6 +876,7 @@ ChatStream.prototype._retransmitWindow = function() {
     self._sendChunk(idx)
       .then(function() {
         self._nativeFails = 0;
+        self._noteNetStored(idx);
         setTimeout(function() { sendNext(idx + 1); }, self.pacingDelayMs);
       })
       .catch(function(err) {

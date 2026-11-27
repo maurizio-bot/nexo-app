@@ -181,7 +181,7 @@ export const ackFiles = {
     self._dispatchFileProgress(fileId, 0, 1, 'sending', 1);
     console.log('[BLOB] ' + fileId + ' (' + type + ', ' + Math.round(data.length * 3 / 4 / 1024) + ' KB) → buzón de archivos: cifro una vez y subo trozos a los relés');
     var tUp = Date.now(); // 3081: velocidad de subida al buzón de archivos
-    var p = stageBlob(net, data, { onProgress: function(i, n) { self._dispatchFileProgress(fileId, i, n, 'sending', Math.max(1, Math.round(95 * i / n))); } }).then(function(res) {
+    var p = stageBlob(net, data, { resumeKey: fileId, onProgress: function(i, n) { self._dispatchFileProgress(fileId, i, n, 'sending', Math.max(1, Math.round(95 * i / n))); } }).then(function(res) {
       try { if (typeof window.NEXO_noteSpeed === 'function') window.NEXO_noteSpeed('buzon', 'out', Math.round(data.length * 3 / 4), Date.now() - tUp); } catch (e) {}
       var rec = { expires: res.pointer.expires * 1000, rec: res.outRecord, ptr: res.pointer, to: {} };
       self._blobOut.set(fileId, rec); saveBlobOut(self._blobOut);

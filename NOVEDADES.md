@@ -14,6 +14,9 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <es-419>
 - Puedes responder a un mensaje con una nota de voz, foto o archivo.
 - En un grupo, mantén presionado el fondo para cambiarlo o compartirlo.
+- Los mensajes por internet llegan aunque tus servidores estén saturados, y NEXO ya no los manda repetidos.
+- Los archivos que avanzan despacio ya no se cortan, y si se cortan siguen desde donde iban.
+- La copia de seguridad espera a que salgas de la app.
 </es-419>
 <!-- /APK -->
 

@@ -211,8 +211,15 @@ export class NetLink {
     var urls = self.relayUrls();
     urls.forEach(function(u) {
       var r = self.relays.get(u);
+      if (r && r.lo) r.lo = false; // 3355: está en la lista de uso: publica también
       if (!r || (!r.ws && now >= (r.retryAt || 0))) self._connect(u);
       else if (changed && r.open) { if (r.challenge) self._auth(u, r, r.challenge); self._subscribe(r); }
+    });
+    // 3355: los de reserva que no se usan para publicar, se escuchan igual (solo lectura)
+    if (typeof self._listenSpareUrls === 'function') self._listenSpareUrls().forEach(function(u) {
+      var r = self.relays.get(u);
+      if (!r || (!r.ws && now >= (r.retryAt || 0))) { self._connect(u); r = self.relays.get(u); if (r) r.lo = true; }
+      else { r.lo = true; if (changed && r.open) { if (r.challenge) self._auth(u, r, r.challenge); self._subscribe(r); } }
     });
     // En línea / desconectado
     self.peers.forEach(function(p, nx) {

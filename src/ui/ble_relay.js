@@ -501,7 +501,9 @@ export class BleRelay {
     item.tries++;
     var p;
     if (item.kind === 'pkt') {
-      p = item.reliable ? ack.sendRawWithRetry(hop.deviceId, item.data, item.id)
+      // 3354: por internet el relé ya guarda el paquete: UN envío y se espera la confirmación 8 s; por Bluetooth/Wi-Fi, 1 reintento a los
+      // 3 s. Si no confirma, el calendario del puente (_hopFail: 15 s, 30 s… hasta 10 min) decide cuándo otra vez (antes: 5 seguidos)
+      p = item.reliable ? ack.sendRawWithRetry(hop.deviceId, item.data, item.id, _isNetDev(hop.deviceId) ? { maxRetries: 0, ackWaitMs: 8000 } : { maxRetries: 1, ackWaitMs: 3000 })
         : self.ble._sendMessageNative(hop.deviceId, item.data, null);
     } else {
       p = self._loadData(item).then(function(data) {

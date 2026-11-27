@@ -25,6 +25,9 @@ export var L2P_MIN_CHARS = 60000;        // ~45 KB de archivo: por debajo, los t
 // de voz o una foto chica tardan decenas de segundos en trozos; abrir el canal (1–2 s) ya compensa desde ~6 KB de archivo.
 export var L2P_MIN_CHARS_MTU23 = 8000;
 export var L2P_MAX_CHARS = 3100000;      // el tope de un archivo por Bluetooth (más grande: «archivo grande», de disco a disco)
+// 3356 (dueño 27-11: «no cortar un envío mientras avance»): los plazos de los dos lados ya no suponen 20 KB/s (un Bluetooth lento que
+// avanzaba se cortaba a mitad): respaldo a 2 KB/s; lo parado lo corta el nativo (se cae el canal o el que recibe deja de leer).
+var L2_BACKSTOP_BPMS = 2; // bytes por ms = 2 KB/s
 var OFFER_TIMEOUT_MS = 6000;             // lo que se espera a que el otro abra el canal
 var FAIL_PAUSE_MS = 10 * 60000;          // tras un fallo, con ese contacto se va por lo de siempre este rato
 var HOST_BACKSTOP_MS = 30000;            // quien recibe: si el nativo no avisa, se libera solo
@@ -122,7 +125,7 @@ export class L2Fast {
           // + ACK_WAIT_MS: T-E1, el otro confirma cuando ya lo pudo descifrar (no al tener los bytes)
           Promise.race([
             _plugin().l2PayloadSend({ deviceId: deviceId, psm: psm, transferId: fileId, data: data, token: tk }),
-            new Promise(function(res, rej) { sendTimer = setTimeout(function() { rej(new Error('envío sin terminar')); }, 12000 + ACK_WAIT_MS + Math.round(data.length / 20)); })
+            new Promise(function(res, rej) { sendTimer = setTimeout(function() { rej(new Error('envío sin terminar')); }, 12000 + ACK_WAIT_MS + Math.round(data.length / L2_BACKSTOP_BPMS)); })
           ]).then(function(r) { clearTimeout(sendTimer); resolve(r); }, function(e) { clearTimeout(sendTimer); reject(e); });
         }
       });
@@ -175,7 +178,7 @@ export class L2Fast {
     var tk = _token();
     _plugin().l2PayloadHost({ transferId: id, size: p.size, token: tk }).then(function(r) {
       if (!r || !(r.psm > 0)) throw new Error('sin canal');
-      var timer = setTimeout(function() { if (self.incoming.has(id)) { self._nativeCancel(id); self._free(id); } }, HOST_BACKSTOP_MS + Math.round(p.size / 20));
+      var timer = setTimeout(function() { if (self.incoming.has(id)) { self._nativeCancel(id); self._free(id); } }, HOST_BACKSTOP_MS + Math.round(p.size / L2_BACKSTOP_BPMS));
       self.incoming.set(id, { meta: p.meta || {}, deviceId: deviceId, from: from, ts: Date.now(), timer: timer });
       return self._ctl(deviceId, { type: 'la', id: id, psm: r.psm, tk: tk });
     }).catch(function(e) {

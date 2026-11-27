@@ -154,18 +154,31 @@ export const netRelays = {
       if (!next) return;
       self._spareOn.push(next);
       console.log('[NET] Relé de reserva ' + _relayHost(next) + ': no conecta ' + base.concat(self._spareOn).filter(isDown).map(_relayHost).join(', ')); // i18n-ok: registro
-      self._connect(next);
+      var rn = self.relays.get(next);
+      if (rn && rn.ws && rn.lo) rn.lo = false; // 3355: ya lo escuchaba: ahora también publica
+      else self._connect(next);
       try { self._bgConfig(); } catch (e) {}
       return;
     }
     var baseOpen = base.filter(function(u) { var r = self.relays.get(u); return !!(r && r.open && !cool(r)); }).length;
     if (self._spareOn.length && baseOpen >= want) {
       var drop = self._spareOn.splice(0);
-      drop.forEach(function(u) { var r = self.relays.get(u); if (r && r.ws) { r.ws.onclose = null; r.ws.onopen = null; try { r.ws.close(); } catch (e) {} } self.relays.delete(u); });
+      // 3355: se dejan de usar para publicar, pero se siguen ESCUCHANDO (otro contacto puede estar publicando ahí)
+      drop.forEach(function(u) { var r = self.relays.get(u); if (r && self._listenSpares()) { r.lo = true; return; } if (r && r.ws) { r.ws.onclose = null; r.ws.onopen = null; try { r.ws.close(); } catch (e) {} } self.relays.delete(u); });
       console.log('[NET] Los relés de siempre vuelven a estar bien: suelto los de reserva (' + drop.map(_relayHost).join(', ') + ')'); // i18n-ok: registro
       try { self._bgConfig(); } catch (e) {}
       self._ownSync(); // 3151: si el lector era uno de reserva, otro
     }
+  },
+  // 3355 (dueño 27-11, diag. S24 21:53: audios al S23 en ✓ sin ✓✓): con sus relés limitando, el que manda publica en los de RESERVA; el
+  // otro, con la app a la vista y sus relés de siempre bien, no escuchaba ahí (su nativo en segundo plano sí) y no le llegaba. Ahora la app
+  // también escucha TODOS los de reserva, solo para leer (r.lo: no se publica en ellos salvo que entren de reserva para publicar).
+  // Solo con los relés por defecto (pool de reserva) y con internet propio (no por un puente).
+  _listenSpares() { return this._sparePool().length > 0 && !this.gwOnly() && !(typeof window !== 'undefined' && window.NEXO_NO_LISTEN_SPARES); },
+  _listenSpareUrls() {
+    if (!this._listenSpares() || !this._realOpenCount()) return [];
+    var on = this.relayUrls();
+    return this._sparePool().filter(function(u) { return on.indexOf(u) < 0; });
   },
   _closeAll() { this.relays.forEach(function(r) { try { if (r.ws) r.ws.close(); } catch (e) {} }); },
   _send(r, arr) { try { if (r.ws && r.open) { r.ws.send(JSON.stringify(arr)); return true; } } catch (e) {} return false; },
