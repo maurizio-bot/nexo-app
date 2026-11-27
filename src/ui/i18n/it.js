@@ -829,7 +829,7 @@ export default {
   prof_cp_online: "Online",
   prof_cp_offline: "Disconnesso",
   prof_cp_chat: "Apri la chat",
-  prof_photo_big: "La foto supera i 5 MB: scegline una più piccola", av_crop_title: "Regola la foto", av_crop_hint: "Trascina per spostare · pizzica o usa la barra per avvicinare o allontanare", av_crop_use: "Usa foto", av_crop_zoom: "Avvicina o allontana",
+  prof_photo_big: "La foto supera i 5 MB: scegline una più piccola", av_crop_title: "Regola la foto", av_crop_hint: "Trascina per spostare · pizzica o usa la barra per avvicinare o allontanare", av_crop_use: "Usa foto", av_crop_zoom: "Avvicina o allontana", ack_lostme_a: " non ti ha tra i contatti: i tuoi messaggi gli arrivano ma non può confermarli.", ack_lostme_b: "Chiedigli di accettare la tua richiesta su NEXO.",
   chat_photo_big: "La foto supera i 40 MB: scegline una più piccola", chat_photo_as_file: "Quella foto è in un formato che non si può mostrare: viene inviata come file",
   prof_cp_mine: "È la mia foto",
   prof_cp_mine_sure: "È tua? Tocca di nuovo per confermare",

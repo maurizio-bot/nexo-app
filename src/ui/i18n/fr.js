@@ -829,7 +829,7 @@ export default {
   prof_cp_online: "En ligne",
   prof_cp_offline: "Hors ligne",
   prof_cp_chat: "Ouvrir la discussion",
-  prof_photo_big: "La photo fait plus de 5 Mo : choisissez-en une plus petite", av_crop_title: "Ajustez la photo", av_crop_hint: "Faites glisser pour déplacer · pincez ou utilisez la barre pour zoomer ou dézoomer", av_crop_use: "Utiliser la photo", av_crop_zoom: "Zoomer ou dézoomer",
+  prof_photo_big: "La photo fait plus de 5 Mo : choisissez-en une plus petite", av_crop_title: "Ajustez la photo", av_crop_hint: "Faites glisser pour déplacer · pincez ou utilisez la barre pour zoomer ou dézoomer", av_crop_use: "Utiliser la photo", av_crop_zoom: "Zoomer ou dézoomer", ack_lostme_a: " ne vous a pas dans ses contacts : vos messages lui arrivent mais il ne peut pas les confirmer.", ack_lostme_b: "Demandez-lui d’accepter votre demande dans NEXO.",
   chat_photo_big: "La photo fait plus de 40 Mo : choisissez-en une plus petite", chat_photo_as_file: "Cette photo est dans un format qui ne peut pas être affiché : elle est envoyée comme fichier",
   prof_cp_mine: "C'est ma photo",
   prof_cp_mine_sure: "C'est la vôtre ? Appuyez de nouveau pour confirmer",

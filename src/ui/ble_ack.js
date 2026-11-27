@@ -7,6 +7,7 @@ import { ratchetCanEncrypt } from '../vault/e2e_ratchet.js';
 import { ackFiles } from './ble_ack_files.js';
 import { ackIncoming } from './ble_ack_incoming.js';
 import { ackResume } from './ble_ack_resume.js';
+import { noteUnsignedAck } from './ack_lostme.js';
 /**
 * v3.14.0: el mismo mensaje troceado distinto por otro camino (puente cortado y reenvío directo) ya no se queda sin completar
 * v3.13.0: trozos de archivo en binario por Bluetooth (BinFrame.kt; sin el 33 % del base64) con quien lo anuncia
@@ -712,7 +713,7 @@ export class BleAckSystem {
         return e2eAckTag(c.publicKey, ack.type + (ack.got === 1 ? '+got' : '') + '|' + ackMsgId + '|' + acker + '|' + _normId(me));
       }).then(function(exp) {
         if (ack.a && exp && _ctEq(String(ack.a), exp)) self._applyAck(ack, ackMsgId);
-        else console.warn('[BleAckSystem] Confirmación sin firma válida de ' + acker + ' (' + ackMsgId + '): ignorada');
+        else { console.warn('[BleAckSystem] Confirmación sin firma válida de ' + acker + ' (' + ackMsgId + '): ignorada'); noteUnsignedAck(self.ble, acker, c.name || ''); } // 28-11: ¿me perdió? (ack_lostme.js)
       }).catch(function() {});
       return true;
     }
