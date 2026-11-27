@@ -21,6 +21,15 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **SIGUIENTE (dueño 26-11 20:16, capturas en la 3160, grupo «Pura gente del señor Nexo»):**
+  1. **Historial: siguen «📎 Archivo grande no incluido: 1000103065.png»** (de Austin y Roberto). OJO: el historial lo arma el MIEMBRO que lo manda;
+     si mandó con 3159 sale el aviso viejo. Pero el aviso lleva NOMBRE de archivo → probablemente son imágenes enviadas como `attachmentType 'file'`
+     (png con nombre) o > 200 KB tras reducir: 3349 solo cubre `'image'`. Arreglo: en `group_history.js` tratar también 'file' con mime image/*
+     (reducir igual) y, para lo que no se pueda, mandar el PUNTERO del buzón si `blobPtr` sigue vigente (7 días) o pedirlo al que lo manda.
+  2. **Al entrar alguien salen 3–4 avisos** («Te agregaron al grupo», «Nuevo en el grupo: tú», «Nuevo en el grupo: X», más «✅ Se unió al grupo»):
+     dejar UNO solo (dueño: «con uno es suficiente»). Ver `groups.js` (gj/«Se unió») y los avisos gsn… de `group_admin.js`.
+  3. **Ajustes del grupo (y sus pantallas) tienen botón X y NO tienen gesto de atrás:** el dueño quiere SIN botones de atrás, solo el gesto
+     (como el resto de la app). B-EST (096e5df) puso `.nx-panel`: quitar la X y engancharlo al gesto/botón atrás de Android (`chat_nav`/back handler).
 - **APK DE EMERGENCIA (26-11 noche, Opus; el dueño eligió esperar al estilo parejo para que vaya TODO junto) — **APK 3160 PUBLICADA (26-11 20:09 México; CI en verde a la primera)**:**
   1. **Relés que limitan** (diag. 26-11 17:10 y 18:21, S24 → S23, «!»): **3347** no se reintenta 5 veces en 10 s (⏳, no «!»); **3348** relé que
      limita/castiga/no deja publicar queda EN PAUSA para publicar (rate 20 s→10 min; banned 10 min→2 h; web of trust/pago/PoW 6 h; se sigue leyendo),
