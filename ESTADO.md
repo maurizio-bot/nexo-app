@@ -18,31 +18,26 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 
 ---
 
-## Dónde estamos (actualizado: 2026-11-25, México)
+## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
-- **🚨 APK DE EMERGENCIA (dueño 26-11 noche, URGENTE; SOLO Opus/Fable — Haiku y Sonnet ya no se usan, ver CLAUDE.md «Modelo»).** Una sola APK a NEXOCHAT con TODO esto:
-  1. **Envío roto en la 3159 (26-11 17:10, S24 del dueño → Galaxy S23):** 4 textos con «!» y Reintentar. Relés: «rate-limited: too many gift wraps from this
-     address» y luego «banned: too many rate-limit violations». El dueño dice que antes NO pasaba (es un hecho). Entre la 3156 y la 3159 el envío NO cambió (solo
-     pantallas): lo que cuadra es el PICO tras actualizar (16:38): 3 teléfonos en la misma Wi-Fi sincronizando a la vez, 137 sobres atrasados, historial de grupo
-     (8 partes ~250 KB), un mensaje de grupo de 972 trozos por internet (BT muerto), confirmaciones reenviadas. **Hecho (commit ef8917d, 3347):** `ble_ack.js` ya no
-     reintenta 5 veces en 10 s si el relé limita (cada intento era otra infracción) y queda ⏳ en vez de «!»; `_resendWaitErr` también espera con «banned»
-     (`reenviolimite.js` OK). **Falta:** ritmo/cola de publicación a relés (textos del usuario primero; ACK; fondo al final: historial de grupo, FENIX, trozos
-     grandes), relé que limita o banea → enfriarlo y usar los otros, y que lo grande no vaya trozo a trozo por relé si hay Bluetooth/Wi-Fi. Reproducir con un relé
-     que limita (`tests/sim/nostr_relay.js`). **Diagnósticos del dueño YA ANALIZADOS (no pedirlos otra vez; resumen en `docs/diagnosticos.json`
-     26-11 14:47–17:11):** la fuente del exceso es el mensaje de grupo **gm17956644590414zot0 (~260 KB mandado EN LÍNEA, no como archivo del buzón)**: por
-     internet va a cada miembro en 45 trozos de 8000 (por BT 972 de 360) y cada ventana sin ACK se reenvía (8 reintentos), una y otra vez desde las 14:39 (ya en
-     la 3156, con datos móviles = direcciones distintas). Tras actualizar (16:38) los 3 teléfonos en la MISMA Wi-Fi → mismo castigo para todos. Arreglo de raíz:
-     lo grande de grupo como archivo (puntero + buzón, como las fotos `[BLOB]`) y no reenviar ventanas por relé cuando el relé limita. Otro relé dijo «Policy
-     violated and pubkey is not in our web of trust» (apartarlo).
-  2. **Fondo del chat de GRUPO como en el chat normal:** cada quien lo cambia SOLO para sí; y si quiere, opción de compartirlo con el grupo (hoy siempre se
-     comparte: «[GROUP] Fondo del grupo … compartido por»).
-  3. **Historial de grupo: hay imágenes que no se descargan** al cargarlo (las miniaturas sí llegan, `[THUMB]`; ver si falta pedir el archivo completo).
-  4. **TODOS los detalles menores pendientes, menos lo de Fable** (dueño: «la última APK debía dejarlo listo y no pasó»): B-EST (ventanas emergentes, menús ⋮ y
-     hojas iguales a Chats), 13 «sin camino» sin ✓✓, «Wi-Fi local: conectado pero su app no contesta», lo abierto de `docs/PENDIENTES.md` «26-11» y la parte de
-     código de `nexo-private/negocio/RUTA_LANZAMIENTO.md`. Fable (fuera): modo concierto nativo, 3c Bluetooth en llamada, doble enlace LE Coded → zombi.
-  Dueño: respuestas CORTAS, trabajar en silencio, solo escribirle al terminar o para una decisión. Esta sesión se cerró al 25 % de contexto; el límite semanal
-  está en aviso (se reinicia el domingo 29-11 a las 2:00 México).
+- **APK DE EMERGENCIA (26-11 noche, Opus; el dueño eligió esperar al estilo parejo para que vaya TODO junto) — EN CURSO (falta el estilo parejo del ayudante; luego se sube a NEXOCHAT):**
+  1. **Relés que limitan** (diag. 26-11 17:10 y 18:21, S24 → S23, «!»): **3347** no se reintenta 5 veces en 10 s (⏳, no «!»); **3348** relé que
+     limita/castiga/no deja publicar queda EN PAUSA para publicar (rate 20 s→10 min; banned 10 min→2 h; web of trust/pago/PoW 6 h; se sigue leyendo),
+     en pausa = caído para la reserva (entra otro), con todos en pausa queda pendiente SIN mandar nada, tras un límite lo pesado (≥ 4000) sale con
+     1,2 s de respiro y lo pequeño sin esperar (`net_publish.js`, nota en `net_relays._onRelayMsg` aunque otro ya dijera OK); **nota de voz de
+     grupo al buzón** (`send.js`: era el adjunto de ~260 KB EN LÍNEA a cada miembro); **3350** Fénix cede internet mientras los relés limitan
+     (`chat_stream._bgShouldYieldNet`). Pruebas: `relelimita.js` (L1–L7, contraprueba), `blobfan.js --audio` (contraprueba 0 trozos).
+  2. **Fondo de grupo solo para mí**, compartir opcional (cualquiera que escriba); uno compartido NO pisa el que elegí (queda «Usar el fondo que
+     compartió X» en ⚙️ → Fondo del grupo); sí cambia uno que también llegó compartido (`wallpaper.js` from/oferta, `group_admin` gwp). `gruposadmin.js`.
+  3. **Historial de grupo (3349):** foto > 200 KB → copia reducida (lienzo ≤ 1280) o su miniatura, ya no el aviso «no incluido»; no viajan marcas
+     locales (thumbOnly/fullRef/blobPtr). `grupohistorial.js` H2b (contraprueba). Fotos ≤ 200 KB ya llegaban (probado).
+  4. **Menores:** estadística («su app no contesta» ya no es fallo del Wi-Fi; «sin camino» que pasa directo a leído cuenta); B-EST (ventanas, menús ⋮ y hojas como Contactos): lo hace un ayudante en otra rama, se junta antes de subir.
+  **PRUEBAS DEL DUEÑO:** (a) los 3 en la misma Wi-Fi, mandar varios textos seguidos al S23: ⏳ si un relé limita, nunca «!», y llegan; (b) nota de voz
+  en el grupo; (c) poner un fondo de grupo propio y que otro comparta el suyo: el tuyo se queda; (d) alguien nuevo en un grupo con fotos grandes
+  pide «Ver mensajes anteriores»: ve las fotos. **Sin hacer:** que lo grande vaya por Bluetooth/Wi-Fi en vez de relés cuando ambos existen (el
+  enrutador ya los prefiere; no se tocó). Fable (fuera): modo concierto nativo, 3c Bluetooth en llamada, doble enlace LE Coded → zombi.
+  Límite semanal en aviso (se reinicia el domingo 29-11 a las 2:00 México).
 - **APK 3159 SUBIDA (26-11 ~14:40 México):** la 3158 falló en 2 pruebas (avisoschat: buscaba el texto viejo del menú ⋮; gruposaudit: 40 intentos de firma no bastaban, azar) → arregladas las pruebas, sin cambio de la app.
 - **(antes) APK 3158 (26-11 ~12:00, FALLÓ):** la 3157 FALLÓ en «Nada sin definir» (`screen` en `find_ui.js` de la 3345, que nunca había
   pasado por el CI) → arreglado; 3158 = todo lo de la 3157 + la tanda menor + ICONO EVERBEAT F (círculo y latido naranja #ff2301; `nexo-private/negocio/icono_everbeat_final/`).
