@@ -1712,6 +1712,14 @@
    "sintoma": "par:zombi (pedido por nx1n36c283), build 3170",
    "categoria": "Fallo de la app",
    "causa": "Diagnóstico emparejado inútil: el pedido llegó con la app recién abierta (97 sobres guardados en segundo plano) y se armó a los 0,6 s, sin REGISTRO NATIVO ni SESIÓN ANTERIOR (se leen del disco a los 0,5 s). Arreglado en la 3172: recién abierta espera 15 s a tener los registros (diagplus D4b). El zombi del S24 con el Motorola no se puede explicar con este diagnóstico."
+  },
+  {
+   "dia": "2026-11-27",
+   "hora": "19:11",
+   "nx": "nx13c1b0fe",
+   "sintoma": "resumen_diario (24-11), build 3170",
+   "categoria": "Resumen diario (informativo)",
+   "causa": "no es un fallo (0 mensajes, internet lista en 0,6 s, 27 °C)"
   }
  ]
 }
