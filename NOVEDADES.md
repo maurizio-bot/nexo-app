@@ -12,17 +12,19 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 
 <!-- APK -->
 <es-419>
+- Las solicitudes de contacto salen arriba de tus chats: acepta o rechaza ahí mismo. Al aceptar se abre el chat para saludar.
+</es-419>
+<!-- /APK -->
+
+## Historial
+
+### APK 3172 (28-11-2026)
 - Toca la foto de un chat o grupo para verla en grande (en el grupo, también cambiarla).
 - Toca el nombre (›) para ver «Información» del chat. Adiós a la rueda.
 - En un grupo, toca el nombre de alguien para ver su tarjeta: mensaje, llamar o agregarlo.
 - La lista de chats ahora con tarjetas y fondo negro puro.
 - Por internet, menos bloqueos de los servidores.
 - Si Android retrasa tus avisos, tus contactos te despiertan solo con lo primero.
-</es-419>
-<!-- /APK -->
-
-## Historial
-
 
 ### APK 3170 (27-11-2026)
 - Por internet, tus mensajes van a los servidores donde tu contacto los lee: ya no se marcan ✓ si él no los va a recibir.

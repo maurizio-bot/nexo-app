@@ -246,4 +246,6 @@ export default {
   chat_info_name: "Contact name",
   mcard_msg: "Message",
   mcard_info: "Info",
+  req_greet_ph: "Say hi to {name} 👋",
+  req_see_all: "See all ({n})",
 };

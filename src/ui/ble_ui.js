@@ -14,6 +14,7 @@ import { sheetSvg, SHEET_ICONS } from './chat_sheet.js';
 function _escMenu(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); } // 3219: silenciar un chat
 import { blockMenuLabel, openBlockSheet } from './bloqueo_ui.js'; // bloquear contacto (24-11)
 import { groupInviteRow } from './group_invite_row.js'; // invitación a grupo (24-11)
+import { requestRow, prependReqCards } from './req_cards.js'; // 28-11: solicitudes arriba de la lista
 import { contactSearchQuery, _csMatch, installContactSearch } from './contacts_search.js'; // 3196: lupa de Contactos
 import { BLE_STATES, _formatTime, _niceName, _getBLEContacts, _getGradientForUUID, _getInitials, _getPinnedContacts, _hasNativeMethod, _isPinned, _normId, _rssiToBars, _safeDispatchEvent, _safeNativeCall, _showToast, _togglePinnedContact } from './ble_helpers.js';
 
@@ -595,64 +596,14 @@ export const BLE_UI_METHODS = {
     box.style.display = '';
     list.innerHTML = '';
     invs.forEach(function(g) { list.appendChild(self._groupInviteRow(g)); });
-    reqs.forEach(function(req) {
-      var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--nx-radius);margin:2px 0;';
-      var info = document.createElement('div'); info.style.cssText = 'flex:1;min-width:0;';
-      var nm = document.createElement('div'); nm.className = 'ble-contact-name'; nm.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-      nm.textContent = req.name || String(req.id || '').toUpperCase();
-      var sub = document.createElement('div'); sub.style.cssText = 'font-size:12px;color:var(--nx-muted);margin-top:2px;';
-      // 3129; 3190: en el idioma de la app y sin voseo
-      sub.textContent = String(req.id || '').toUpperCase() + ' · ' + (req.acc ? t('req_sub_acc', 'aceptó tu solicitud — confírmala') : req.inv ? t('req_from_invite', 'aceptó tu invitación') : t('req_sub_in', 'quiere agregarte'));
-      info.appendChild(nm); info.appendChild(sub);
-      // 3135 (anti-suplantación, dueño 15-11): ya tengo a alguien con este nombre → es OTRO teléfono (o un impostor)
-      var twin = (typeof self._twinByName === 'function' && !req.acc) ? self._twinByName(req.name, req.id) : null;
-      if (twin) {
-        var tw = document.createElement('div'); tw.className = 'ble-req-twin'; tw.style.cssText = 'font-size:12px;color:#ff8a80;margin-top:3px;white-space:normal;';
-        tw.textContent = t('req_same_name', '⚠️ Ya tienes a «{name}» con otro NEXO ID ({id}). Es otro teléfono: puede ser un impostor. Confírmalo con una llamada antes de aceptar.').replace('{name}', twin.name || '').replace('{id}', String(twin.nexoId || twin.deviceUUID || '').toUpperCase());
-        info.appendChild(tw);
-      }
-      // #dueño 04-11 (perfil 2b): tarjeta de validación — tel/correo ENMASCARADOS que llegaron en la solicitud (reconocer
-      // sin regalar el dato). Los datos COMPLETOS y la foto aparecen al ACEPTAR (por el canal seguro E2E).
-      if (req.ph || req.em) {
-        var det = document.createElement('div'); det.style.cssText = 'font-size:11px;color:var(--nx-muted);margin-top:3px;';
-        var bits = [];
-        if (req.ph) bits.push('📱 ' + req.ph);
-        if (req.em) bits.push('✉️ ' + req.em);
-        det.textContent = bits.join('   ·   ');
-        info.appendChild(det);
-      }
-      var ok = document.createElement('button'); ok.textContent = req.acc ? t('req_btn_confirm', 'Confirmar') : t('req_btn_accept', 'Aceptar'); // 3194: en el idioma de la app
-      ok.style.cssText = 'flex-shrink:0;padding:7px 12px;border-radius:14px;border:none;background:var(--nx-grad);box-shadow:0 3px 10px rgba(0,200,255,.35);color:#fff;font-weight:600;cursor:pointer;';
-      var no = document.createElement('button'); no.textContent = t('req_btn_delete', 'Eliminar');
-      no.style.cssText = 'flex-shrink:0;padding:7px 10px;border-radius:14px;border:1px solid var(--nx-line);background:var(--nx-surface-2);color:#fff;cursor:pointer;';
-      ok.addEventListener('click', function() {
-        ok.disabled = no.disabled = true;
-        self.acceptRequest(req.id).then(function() { haptic('confirm'); self.renderRequests(); self.renderContactsList(); }).catch(function() { ok.disabled = no.disabled = false; });
-      });
-      no.addEventListener('click', function() { self.rejectRequest(req.id); self.renderRequests(); });
-      row.appendChild(personAvatar(req.id, req.name || String(req.id || ''))); // 3140: su círculo de color, como en Contactos
-      row.appendChild(info); row.appendChild(ok); row.appendChild(no);
-      list.appendChild(row);
-    });
+    reqs.forEach(function(req) { list.appendChild(requestRow(self, req)); }); // 28-11: la fila vive en req_cards.js (también arriba de la lista)
   },
 
   // Invitación a grupo (dueño 24-11): la fila con Aceptar / Rechazar (group_invite_row.js)
   _groupInviteRow(g) { return groupInviteRow(this, g); },
 
-  _prependReqBanner(list) {
-    var self = this;
-    if (!list) return;
-    var reqs = ((typeof self.pendingRequests === 'function' && self.pendingRequests()) || []).concat((self.groups && typeof self.groups.invitations === 'function') ? self.groups.invitations() : []);
-    if (!reqs.length) return;
-    var banner = document.createElement('div');
-    banner.id = 'ble-req-banner';
-    banner.style.cssText = 'margin:8px 12px 10px;padding:12px 14px;border-radius:14px;background:linear-gradient(135deg,#00c8ff,#a855f7);color:#fff;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:9px;box-shadow:0 2px 12px rgba(0,200,255,.35);';
-    banner.innerHTML = '<span style="font-size:18px;">👋</span><span>' + reqs.length + ' ' + (reqs.length === 1 ? t('req_banner_one', 'solicitud para ti') : t('req_banner_many', 'solicitudes para ti')) + ' — ' + t('req_banner_tap', 'toca para ver') + '</span>';
-    banner.addEventListener('click', function () { try { self.togglePanel(); } catch (e) {} });
-    if (list.firstChild) list.insertBefore(banner, list.firstChild);
-    else list.appendChild(banner);
-  },
+  // 28-11 (dueño): las solicitudes salen ARRIBA de la lista de chats con Aceptar / Rechazar (req_cards.js); aceptar abre el chat
+  _prependReqBanner(list) { var self = this; prependReqCards(self, list, function(g) { return self._groupInviteRow(g); }); },
 
   renderContactsList() {
     var self = this;

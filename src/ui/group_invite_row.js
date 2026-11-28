@@ -4,6 +4,7 @@
  */
 import { haptic } from './haptics.js';
 import { t } from './i18n.js';
+import { openAfterAccept } from './req_cards.js';
 
 export function groupInviteRow(self, g) {
   var row = document.createElement('div');
@@ -20,8 +21,8 @@ export function groupInviteRow(self, g) {
   ok.style.cssText = 'flex-shrink:0;padding:7px 12px;border-radius:14px;border:none;background:var(--nx-grad);box-shadow:0 3px 10px rgba(0,200,255,.35);color:#fff;font-weight:600;cursor:pointer;';
   var no = document.createElement('button'); no.className = 'grp-inv-reject'; no.textContent = t('grp_inv_reject', 'Rechazar');
   no.style.cssText = 'flex-shrink:0;padding:7px 10px;border-radius:14px;border:1px solid var(--nx-line);background:var(--nx-surface-2);color:#fff;cursor:pointer;';
-  ok.addEventListener('click', function() { ok.disabled = no.disabled = true; self.groups.acceptInvite(g.id); try { haptic('confirm'); } catch (e) {} self.renderRequests(); self.renderContactsList(); });
-  no.addEventListener('click', function() { ok.disabled = no.disabled = true; self.groups.rejectInvite(g.id); self.renderRequests(); self.renderContactsList(); });
+  ok.addEventListener('click', function(e) { if (e && e.stopPropagation) e.stopPropagation(); ok.disabled = no.disabled = true; var ok2 = self.groups.acceptInvite(g.id); try { haptic('confirm'); } catch (x) {} self.renderRequests(); self.renderContactsList(); if (ok2) openAfterAccept(self, g.id, g.name || '', false); }); // 28-11: aceptar abre el grupo
+  no.addEventListener('click', function(e) { if (e && e.stopPropagation) e.stopPropagation(); ok.disabled = no.disabled = true; self.groups.rejectInvite(g.id); self.renderRequests(); self.renderContactsList(); });
   var av = document.createElement('div'); av.className = 'ble-contact-avatar'; av.style.cssText = 'width:40px;height:40px;min-width:40px;display:flex;align-items:center;justify-content:center;font-size:18px;'; av.textContent = '👥';
   row.appendChild(av); row.appendChild(info); row.appendChild(ok); row.appendChild(no);
   return row;

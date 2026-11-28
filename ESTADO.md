@@ -21,6 +21,11 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **28-11 20:00 México (Opus) — SOLICITUDES ARRIBA DE LA LISTA (pedido del dueño), en NEXOCHAT con [skip ci]: va en la PRÓXIMA APK.**
+  `src/ui/req_cards.js`: la solicitud (y la invitación a grupo) sale arriba de los chats con Aceptar / Eliminar ahí mismo; brilla 3 veces
+  (~2,7 s) al llegar y al volver a la app, luego fija con borde (el dueño aceptó: nada de parpadeo continuo); > 3 → «Ver todas (N)»;
+  aceptar abre el chat con «Saluda a {nombre} 👋» en la caja («te escribió»: sin saludo; grupo: abre el grupo). Prueba `reqcards.js` en ci.js
+  (contraprueba 3172 falla todo). NOVEDADES: bloque 3172 pasado al historial y bloque nuevo con esto.
 - **28-11 noche (Opus) — FASE 1, TERCER BLOQUE HECHO y subido a NEXOCHAT en UNA APK (con los 3 arreglos de la 3172).**
   (1a) Módulos puros `src/core/ruta/`: `motivos.js` (listas cerradas A.6/B.2.4/B.4.1 y la respuesta de un relé → ErrorCamino),
   `contacto_ruta.js` (lugar con los 120 s CERCA→LEJOS, despierto APP/NATIVO/DORMIDO, toques degradados, permanencia 60 s y freno de
