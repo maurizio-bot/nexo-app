@@ -21,6 +21,15 @@ No preguntar «¿qué priorizo?» cuando hay un error o algo roto: se corrige. (
 ## Dónde estamos (actualizado: 2026-11-26 noche, México)
 
 ### TRASPASO (empezar una sesión limpia desde aquí; MÁXIMO ~60 líneas: lo viejo pasa a `docs/historial/`)
+- **28-11 ~18:10 México — SIGUIENTE SESIÓN (decidido con el dueño): NO subir APK solo con los 3 arreglos (sería perder ~90 min de CI);
+  se sigue con el RESTO DE LA FASE 1 y se sube UNA APK al final.** Pendiente de la fase 1 (contrato §D.3): (1a) `calendario.js`,
+  `contacto_ruta.js`, `motivos.js` + banco `tests/sim/mundo/` con los escenarios 5–10, 20, 21, 26, 29–33, 35 + vectores JSON para Kotlin;
+  (1b) puntuación de relés, cupo a la mitad 1 h tras un límite, toques FCM degradados, juntar textos en un sobre, avance y plazos por avance.
+  «El calendario manda» por internet va DESPUÉS de ver `[RUTA-SOMBRA]` en teléfonos reales (lo dice el contrato). Corregir en el contrato
+  §B.4.2 el error de «republicar el mismo evento» (el relé no reenvía en vivo un duplicado). Del dueño: quitar el PARCHE del zombi falso
+  (`ble_connections.js` 3172, para la fase 2 Bluetooth: un solo dueño del estado del enlace) y rehacer bien el retraso del diagnóstico
+  emparejado (esperar a que carguen los registros, sin 15 s fijos). **Antes de subir: correr TODAS las pruebas de internet aquí**
+  (bigresume, netsilence, netsmall, blob*, acuses, reenvionet, cuporele…), no solo la nueva (lección de la 3171).
 - **27-11 17:55 México (Opus): CI 3171 FALLÓ (bigresume, netsilence, netsmall: archivo por internet a quien estaba callado/dormido no
   llegaba nunca). Causa: «republicar el MISMO evento»: el relé no reenvía en vivo un evento que ya tenía. Arreglo: el mismo evento solo
   si NINGÚN relé lo guardó la vez anterior (`republicar.js` `guardado`, `net_link.send`). Subido con los 2 arreglos de abajo = APK siguiente.
