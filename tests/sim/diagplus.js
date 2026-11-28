@@ -101,13 +101,15 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
   // Ahora espera a tener los registros: se simula «recién abierta» con la perilla (espera ≈ 3 s desde ahora)
   {
     const gapB = B.win.NEXO_AUTODIAG_GAP_MS; B.win.NEXO_AUTODIAG_GAP_MS = 0;
-    B.win.NEXO_AUTODIAG_BOOT_MS = Math.round(B.win.performance.now()) + 3000;
+    B.win.NEXO_AUTODIAG_BOOT_MS = Math.round(B.win.performance.now()) + 15000; // 3173: el tope ya no es la espera: se arma con los registros
+    B.win.NEXO_AUTODIAG_MIN_MS = Math.round(B.win.performance.now()) + 3000;   // y con ~3 s de sesión desde ahora
     const t0 = Date.now();
     adA().report('zombi', idB);
     r.D4b_espera_arranque = await waitFor(() => logs.some((l) => /\[B\].*pidió mi diagnóstico \(su síntoma «zombi»\): la app acaba de abrirse, lo armo en/.test(l)), 10000) !== null;
     r.D4b_par_llega_s = await waitFor(() => adB().inbox().some((e) => e.sym === 'par:zombi' && e.local), 15000);
     r.D4b_no_antes_de_2s = (Date.now() - t0) >= 2000;
-    B.win.NEXO_AUTODIAG_BOOT_MS = 0; B.win.NEXO_AUTODIAG_GAP_MS = gapB;
+    r.D4b_antes_del_tope = typeof r.D4b_par_llega_s === 'number' && r.D4b_par_llega_s < 10;
+    B.win.NEXO_AUTODIAG_BOOT_MS = 0; B.win.NEXO_AUTODIAG_MIN_MS = 0; B.win.NEXO_AUTODIAG_GAP_MS = gapB;
   }
 
   // ===== D5: síntomas nuevos =====
@@ -172,7 +174,7 @@ const ocultos = async (p, from) => (await p.win.vaultLoadMessages(from)).filter(
 
   r.contenido_en_diagnostico = /hola B|hola A/.test(txt);
   r.errores = logs.filter((l) => / error: /.test(l) && !/Not implemented|ResizeObserver/.test(l)).slice(0, 3);
-  const ok = r.D4b_espera_arranque && typeof r.D4b_par_llega_s === 'number' && r.D4b_no_antes_de_2s && typeof r.emparejados_s === 'number' && r.reporte === 'enviado' && typeof r.llega_a_B_s === 'number' && r.D1_estado_y_zona && r.D1_contacto_camino_y_build && r.D1b_wifi_y_rapidos && !!r.D1c_tor && r.D2_linea_de_tiempo && r.D3_compactado && r.estado_antes_del_registro &&
+  const ok = r.D4b_espera_arranque && typeof r.D4b_par_llega_s === 'number' && r.D4b_no_antes_de_2s && r.D4b_antes_del_tope && typeof r.emparejados_s === 'number' && r.reporte === 'enviado' && typeof r.llega_a_B_s === 'number' && r.D1_estado_y_zona && r.D1_contacto_camino_y_build && r.D1b_wifi_y_rapidos && !!r.D1c_tor && r.D2_linea_de_tiempo && r.D3_compactado && r.estado_antes_del_registro &&
     r.D4_apagado_no_manda && typeof r.D4_par_manda_s === 'number' && r.D4_A_no_pide_por_un_pedido && r.D5_enlace_abre_cierra && r.D5_entrega_lenta && r.D5b_dormido_no_es_lento && r.D5c_repetida_no_es_lenta && r.D5d_oculto_no_es_lento && r.D5e_leido_no_repetida && r.D6_hueco_10_min && r.D6_pasa_tras_10_min && !r.contenido_en_diagnostico && !r.errores.length;
   r.resultado = ok ? 'OK' : 'FALLO';
   console.log('DIAGPLUS ' + JSON.stringify(r));

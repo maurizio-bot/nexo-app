@@ -189,7 +189,7 @@ function _pairRequest(from, k) {
   // Recién abierta, se espera a tener esos registros (y unos segundos de la sesión) antes de armarlo.
   // 3173 (dueño 28-11): ya no 15 s fijos: en cuanto diag.js tenga leídos la sesión anterior y el registro nativo (y haya 3 s de esta
   // sesión); 15 s es solo el tope por si el disco no contesta.
-  var since = now - _bootAt, tope = _knob('NEXO_AUTODIAG_BOOT_MS', BOOT_WAIT_MS), minimo = Math.min(BOOT_MIN_MS, tope);
+  var since = now - _bootAt, tope = _knob('NEXO_AUTODIAG_BOOT_MS', BOOT_WAIT_MS), minimo = Math.min(_knob('NEXO_AUTODIAG_MIN_MS', BOOT_MIN_MS), tope);
   if (since < tope && autoDiagEnabled() && (!diagRegistrosListos() || since < minimo)) {
     console.log('[AUTODIAG] ' + from + ' pidió mi diagnóstico (su síntoma «' + sym + '»): la app acaba de abrirse, lo armo en cuanto estén los registros (máx. ' + Math.round((tope - since) / 1000) + ' s)');
     var hecho = false, armar = function() { if (hecho) return; hecho = true; clearTimeout(tt); var r2 = autoDiagReport('par:' + sym, 'pedido por ' + from); console.log('[AUTODIAG] ' + from + ' pidió mi diagnóstico (su síntoma «' + sym + '»): ' + r2); };
