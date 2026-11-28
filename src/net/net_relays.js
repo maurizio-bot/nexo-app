@@ -181,7 +181,7 @@ export const netRelays = {
     return this._sparePool().filter(function(u) { return on.indexOf(u) < 0; });
   },
   _closeAll() { this.relays.forEach(function(r) { try { if (r.ws) r.ws.close(); } catch (e) {} }); },
-  _send(r, arr) { try { if (r.ws && r.open) { r.ws.send(JSON.stringify(arr)); return true; } } catch (e) {} return false; },
+  _send(r, arr) { try { if (r.ws && r.open) { r.ws.send(JSON.stringify(arr)); if (arr[0] === 'EVENT') r._evAt = Date.now(); return true; } } catch (e) {} return false; }, // _evAt: para puntuar el tiempo hasta el OK
   // 3011: pregunta mínima (una búsqueda por un id que no existe: todo relé contesta EOSE) a los relés abiertos; el que no dice
   // NADA en RELAY_PROBE_MS se da por muerto y se reconecta. minIdle: solo los que llevan callados al menos eso.
   _probeRelays(why, minIdle) {
@@ -431,7 +431,9 @@ export const netRelays = {
       // antes): si no, se le seguía mandando todo y cada sobre era otra infracción. No por la respuesta a una identificación (NIP-42).
       if (m[2] === false && !(r.authIds && r.authIds.has(m[1])) && typeof this._relayLimitNote === 'function') this._relayLimitNote(url, r, m[3]);
       // Fase 1 (republicar el mismo evento): «duplicate: ya lo tengo» = guardado, aunque algún relé lo diga con OK false (NIP-01)
-      var fn = r.waits.get(m[1]); if (fn) { r.waits.delete(m[1]); fn(!!m[2] || /^duplicate:/i.test(String(m[3] || '')), m[3]); }
+      var okD = !!m[2] || /^duplicate:/i.test(String(m[3] || ''));
+      if (!(r.authIds && r.authIds.has(m[1])) && typeof this._relayScore === 'function') this._relayScore(url, r, okD, m[3]); // fase 1 B.5.3: puntuar
+      var fn = r.waits.get(m[1]); if (fn) { r.waits.delete(m[1]); fn(okD, m[3]); }
     }
     else if (m[0] === 'AUTH' && typeof m[1] === 'string') { r.challenge = m[1]; this._auth(url, r, m[1]); }
     else if (m[0] === 'CLOSED' && m[1] === r.sub) {

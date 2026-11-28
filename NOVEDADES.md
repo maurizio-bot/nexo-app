@@ -13,10 +13,11 @@ que el user cuando la descargue pueda verificar qué es lo que se implementó…
 <!-- APK -->
 <es-419>
 - Toca la foto de un chat o grupo para verla en grande (en el grupo, también cambiarla).
-- Toca el nombre (›) para ver «Información»: nombre, buscar, destacados, temporales, silenciar y bloquear. Adiós a la rueda.
+- Toca el nombre (›) para ver «Información» del chat. Adiós a la rueda.
 - En un grupo, toca el nombre de alguien para ver su tarjeta: mensaje, llamar o agregarlo.
 - La lista de chats ahora con tarjetas y fondo negro puro.
-- Por internet, un reintento reusa el mismo envío: menos bloqueos de los servidores.
+- Por internet, menos bloqueos de los servidores.
+- Si Android retrasa tus avisos, tus contactos te despiertan solo con lo primero.
 </es-419>
 <!-- /APK -->
 

@@ -34,6 +34,12 @@ class NexoFcmService : FirebaseMessagingService() {
         // los contactos es el sello: sin él nadie puede mandar toques a este teléfono cuando el enviador los exija sellados.
         const val PREF_SEALED = "sealed"
         const val PREF_SEALED_FOR = "sealed_for"
+        const val PREF_DEG_AT = "deg_at"; const val PREF_OK_AT = "ok_at"
+        // ¿Los toques de este teléfono llegan degradados? (el último toque de alta prioridad llegó normal, hace < 7 días)
+        fun degradado(ctx: Context): Boolean = try {
+            val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            RutaCalendario.degradadoVigente(p.getLong(PREF_DEG_AT, 0L), p.getLong(PREF_OK_AT, 0L), System.currentTimeMillis())
+        } catch (e: Exception) { false }
         /** Un sello válido para guardar: prefijo y tamaño razonables (lo genera el enviador; aquí no se abre). */
         fun sealOk(s: String?): Boolean = s != null && s.startsWith("s1.") && s.length in 40..6000 && s.all { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' }
         const val WAKE_NOTIF_ID = 4600
@@ -72,6 +78,15 @@ class NexoFcmService : FirebaseMessagingService() {
             return
         }
         nlog("Despierta recibido (data=${message.data.size}, prio=${message.priority}/${message.originalPriority})")
+        // Fase 1 (contrato B.5.6): ¿Android degradó el toque (pedido ALTA, entregado NORMAL)? Se anota; la app lo anuncia en el saludo y los
+        // contactos solo tocan para llamadas y el primer pendiente (cada toque de más gasta el cupo de FCM y empeora los siguientes).
+        try {
+            if (message.originalPriority == 1) {
+                val deg = RutaCalendario.toqueDegradado(message.priority, message.originalPriority)
+                getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(if (deg) PREF_DEG_AT else PREF_OK_AT, System.currentTimeMillis()).apply()
+                if (deg) nlog("Toque FCM DEGRADADO por Android (pedido alta, llegó normal): se avisa a los contactos para que toquen menos", "WARN")
+            }
+        } catch (e: Exception) { }
 
         // 1) Arrancar el servicio de NEXO para que empiece a bajar el buzón (NetBg) y el Bluetooth. Un "toque" de ALTA
         //    prioridad de FCM da permiso temporal para arrancar un servicio en primer plano desde segundo plano (como

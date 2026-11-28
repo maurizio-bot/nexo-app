@@ -2,7 +2,7 @@ import { wakePost } from './wake_post.js';
 import { DEFAULT_SENDER, _nid, CALL_WAKE_MIN_MS, WAKE_MIN_MS, XFER_WAKE_MIN_MS, _plugin } from './net_link_shared.js';
 // Métodos de NetLink: DESPERTAR: el toque (FCM) a un teléfono dormido y mantenerlo despierto en una transferencia.
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
-var SEAL_ASK_MS = 6 * 3600000, SEAL_LOOK_MS = [20000, 120000];
+var SEAL_ASK_MS = 6 * 3600000, SEAL_LOOK_MS = [20000, 120000], WAKE_DEG_MS = 30 * 60000;
 export const netWake = {
 
   // 14A (decisión del dueño 23-11, auditoría T-P1): el «toque» sellado. Lo que se comparte con los contactos para despertar este
@@ -11,6 +11,7 @@ export const netWake = {
   // viejo, sin red), se sigue con el token como siempre y se pide el sello como mucho cada 6 h: nunca se deja de poder despertar.
   _wakeSeal(ft) {
     var self = this;
+    if (ft && typeof ft.deg === 'boolean') self._setFcmDeg(ft.deg);
     if (!ft || !ft.token) return;
     if (ft.sealed) { if (self.fcmToken !== ft.sealed) { self.fcmToken = ft.sealed; console.log('[NET] Toque sellado: a los contactos va el sello, no el token'); } return; } // i18n-ok: registro
     self.fcmToken = ft.token;
@@ -32,6 +33,12 @@ export const netWake = {
 
   // FCM «despertador» (#87, Fase 2): URL del enviador (Cloud Function del dueño). Por defecto la estándar del proyecto;
   // se puede cambiar (setSender) si el despliegue da otra. Vacía = despertador apagado (no se piden toques).
+  // Fase 1 (contrato B.5.6): ¿los toques de ESTE teléfono llegan degradados? (lo mide el nativo al recibirlos). Se anuncia en el saludo (td).
+  _setFcmDeg(deg) {
+    deg = !!deg; if (deg === !!this.fcmDeg) return;
+    this.fcmDeg = deg;
+    console.log('[WAKE] Mis toques FCM ' + (deg ? 'llegan DEGRADADOS (Android los bajó a prioridad normal): se lo digo a mis contactos' : 'vuelven a llegar con prioridad alta')); // i18n-ok: registro
+  },
   senderUrl() { return (this.state.senderUrl != null) ? this.state.senderUrl : DEFAULT_SENDER; },
   setSender(url) { this.state.senderUrl = String(url == null ? '' : url); this._saveState(); },
   // Pide al enviador que dispare el «toque» de Google al token del contacto. SOLO viaja el token (nunca el contenido);
@@ -52,6 +59,9 @@ export const netWake = {
         peer._callWakeAt = now;
       } else {
         if (peer._wakeAt && (now - peer._wakeAt) < WAKE_MIN_MS) return;
+        // Fase 1 (contrato B.5.6): sus toques llegan degradados → solo el PRIMER pendiente toca: tras un toque, no otro hasta que él
+        // dé señales (lastRx nuevo) o pasen 30 min. Cada toque de más gasta su cupo de FCM y empeora los siguientes (también las llamadas).
+        if (peer.fcmDeg && peer._wakeAt && (peer.lastRx || 0) < peer._wakeAt && now - peer._wakeAt < WAKE_DEG_MS) return;
         peer._wakeAt = now;
       }
       var self = this;

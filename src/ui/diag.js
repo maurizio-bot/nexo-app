@@ -22,6 +22,11 @@ var DIAG_KEY_MAX = 1500; // «eventos clave» por sesión (actual y anterior)
 // app cerrada, WifiLock, energía, ciclo de vida) lo escribe en disco; aquí lo recogemos al abrir la app para ver qué
 // hizo mientras estaba cerrada (el registro de consola de arriba no existe sin WebView).
 var _nativeLog = '';
+// 3173 (dueño 28-11: «rehacer bien el retraso del diagnóstico emparejado»): ¿ya se leyeron del disco la SESIÓN ANTERIOR y el REGISTRO
+// NATIVO? autodiag espera a esto (no a 15 s fijos) antes de armar un diagnóstico pedido con la app recién abierta.
+var _regListos = false, _regCbs = [];
+function _regMarcar() { if (_regListos) return; _regListos = true; var c = _regCbs; _regCbs = []; c.forEach(function(f) { try { f(); } catch (e) {} }); }
+export function diagRegistrosListos(cb) { if (typeof cb === 'function') { if (_regListos) cb(); else _regCbs.push(cb); } return _regListos; }
 // Eventos clave: se guardan aparte para que el detalle de una transferencia larga no los borre
 var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[MTU\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FILE_IO|AT_REST|\[LOCK\]|\[E2E\]|\[JUMP\]|\[WIFI-DIRECT\]|\[ATTACH\]|\[CAMERA\]|\[CALL\]|\[ADD\]|sendFile|Reenvi|peerReady|Peer ready|App de vuelta|Re-búsqueda|desconect|Disconnect|GLOBAL TIMEOUT|Assembly timeout|Archivo recibido|^\S+ [WE] /;
 (function() {
@@ -54,10 +59,11 @@ var DIAG_KEY_RE = /BT_ERR|\[BIN\]|\[MTU\]|\[VIDEO\]|\[NET\]|\[SEND\]|\[WIFI\]|FI
   function plugin() { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.NexoBLE; }
   setTimeout(function() {
     var pl = plugin();
-    if (!pl || typeof pl.loadFromFile !== 'function') return;
-    pl.loadFromFile({ filename: DIAG_FILE }).then(function(r) { if (r && r.exists && r.content) _diagPrev = r.content; }).catch(function() {});
+    if (!pl || typeof pl.loadFromFile !== 'function') { _regMarcar(); return; }
+    var faltan = typeof pl.readNativeLog === 'function' ? 2 : 1, uno = function() { if (--faltan <= 0) _regMarcar(); };
+    pl.loadFromFile({ filename: DIAG_FILE }).then(function(r) { if (r && r.exists && r.content) _diagPrev = r.content; }).catch(function() {}).then(uno);
     // Ronda 2785 (#87): lo que hizo la parte nativa con la app cerrada (recién abierta, es lo más valioso para el #87)
-    if (typeof pl.readNativeLog === 'function') pl.readNativeLog().then(function(r) { if (r && r.content) _nativeLog = r.content; }).catch(function() {});
+    if (typeof pl.readNativeLog === 'function') pl.readNativeLog().then(function(r) { if (r && r.content) _nativeLog = r.content; }).catch(function() {}).then(uno);
     // v9.9.48: avisos nativos de archivos (lentos, cifrado en reposo); solo estas etiquetas (sin contenido)
     if (typeof pl.addListener === 'function') pl.addListener('onRemLog', function(d) {
       if (d && (d.tag === 'FILE_IO' || d.tag === 'AT_REST')) console[d.level === 'WARN' ? 'warn' : 'log']('[NATIVO] ' + d.tag + ': ' + d.message);

@@ -1,0 +1,661 @@
+{
+ "_": "Vectores del calendario por mensaje y del cupo/toques (src/core/ruta/calendario.js, reles_puntos.js, contacto_ruta.js; RutaCalendario.kt debe dar lo mismo). Fase 1 del contrato de los caminos.",
+ "espera": [
+  [
+   2000,
+   0,
+   0.5,
+   1000
+  ],
+  [
+   2000,
+   3,
+   0.25,
+   4000
+  ],
+  [
+   15000,
+   2,
+   0.99,
+   59400
+  ],
+  [
+   2000,
+   20,
+   0.5,
+   300000
+  ],
+  [
+   15000,
+   10,
+   0,
+   0
+  ],
+  [
+   2000,
+   1,
+   0.999,
+   3996
+  ]
+ ],
+ "siguienteTrasFallo": [
+  {
+   "tipo": "TEXTO",
+   "n": 0,
+   "usados": 0,
+   "r": 0.5,
+   "now": 1800000000000,
+   "out": {
+    "at": 1800000001000,
+    "lento": false
+   }
+  },
+  {
+   "tipo": "TEXTO",
+   "n": 2,
+   "usados": 2,
+   "r": 0.5,
+   "now": 1800000000000,
+   "out": {
+    "at": 1800000004000,
+    "lento": false
+   }
+  },
+  {
+   "tipo": "TEXTO",
+   "n": 1,
+   "usados": 3,
+   "r": 0.5,
+   "now": 1800000000000,
+   "out": {
+    "at": 1800001800000,
+    "lento": true
+   }
+  },
+  {
+   "tipo": "ARCH_GRANDE",
+   "n": 1,
+   "usados": 1,
+   "r": 0.5,
+   "now": 1800000000000,
+   "out": {
+    "at": 1800000015000,
+    "lento": false
+   }
+  },
+  {
+   "tipo": "NOTA_VOZ",
+   "n": 0,
+   "usados": 0,
+   "r": 0.9,
+   "now": 1800000000000,
+   "out": {
+    "at": 1800000013500,
+    "lento": false
+   }
+  },
+  {
+   "tipo": "ACUSE",
+   "n": 5,
+   "usados": 2,
+   "r": 0.7,
+   "now": 1800000000000,
+   "out": {
+    "at": 1800000044800,
+    "lento": false
+   }
+  }
+ ],
+ "toqueAt": [
+  [
+   1800000000000,
+   0,
+   1800000000000
+  ],
+  [
+   1800000000000,
+   1,
+   1800000120000
+  ],
+  [
+   1800000000000,
+   2,
+   1800000600000
+  ],
+  [
+   1800000000000,
+   3,
+   1800001800000
+  ],
+  [
+   1800000000000,
+   4,
+   1800007200000
+  ],
+  [
+   1800000000000,
+   5,
+   -1
+  ]
+ ],
+ "sinAckMs": [
+  [
+   0,
+   8000
+  ],
+  [
+   1000,
+   8000
+  ],
+  [
+   2666,
+   8000
+  ],
+  [
+   4000,
+   12000
+  ],
+  [
+   30000,
+   60000
+  ]
+ ],
+ "cabeSobre": [
+  {
+   "salidas": [],
+   "now": 1800000000000,
+   "out": true
+  },
+  {
+   "salidas": [
+    1799999999000,
+    1799999998000,
+    1799999997000,
+    1799999996000,
+    1799999995000
+   ],
+   "now": 1800000000000,
+   "out": true
+  },
+  {
+   "salidas": [
+    1799999999000,
+    1799999998000,
+    1799999997000,
+    1799999996000,
+    1799999995000,
+    1799999940001
+   ],
+   "now": 1800000000000,
+   "out": false
+  },
+  {
+   "salidas": [
+    1799999940000,
+    1799999939000,
+    1799999999999,
+    1799999999998,
+    1799999999997,
+    1799999999996
+   ],
+   "now": 1800000000000,
+   "out": true
+  }
+ ],
+ "juntar": [
+  {
+   "lista": [
+    {
+     "msgId": "a",
+     "nx": "B",
+     "carril": "net.relay",
+     "tipo": "TEXTO",
+     "chars": 100
+    },
+    {
+     "msgId": "b",
+     "nx": "B",
+     "carril": "net.relay",
+     "tipo": "TEXTO",
+     "chars": 100
+    },
+    {
+     "msgId": "c",
+     "nx": "C",
+     "carril": "net.relay",
+     "tipo": "TEXTO",
+     "chars": 100
+    },
+    {
+     "msgId": "d",
+     "nx": "B",
+     "carril": "net.relay",
+     "tipo": "ARCH_CHICO",
+     "chars": 100
+    },
+    {
+     "msgId": "e",
+     "nx": "B",
+     "carril": "net.relay",
+     "tipo": "ACUSE",
+     "chars": 50
+    }
+   ],
+   "out": [
+    [
+     "a",
+     "b",
+     "e"
+    ],
+    [
+     "c"
+    ],
+    [
+     "d"
+    ]
+   ]
+  },
+  {
+   "lista": [
+    {
+     "msgId": "a",
+     "nx": "B",
+     "carril": "net.relay",
+     "tipo": "TEXTO",
+     "chars": 40000
+    },
+    {
+     "msgId": "b",
+     "nx": "B",
+     "carril": "net.relay",
+     "tipo": "TEXTO",
+     "chars": 30000
+    },
+    {
+     "msgId": "c",
+     "nx": "B",
+     "carril": "net.relay",
+     "tipo": "TEXTO",
+     "chars": 20000
+    }
+   ],
+   "out": [
+    [
+     "a"
+    ],
+    [
+     "b",
+     "c"
+    ]
+   ]
+  },
+  {
+   "lista": [
+    {
+     "msgId": "a",
+     "nx": "B",
+     "carril": "lan",
+     "tipo": "TEXTO",
+     "chars": 10
+    },
+    {
+     "msgId": "b",
+     "nx": "B",
+     "carril": "net.relay",
+     "tipo": "TEXTO",
+     "chars": 10
+    }
+   ],
+   "out": [
+    [
+     "a"
+    ],
+    [
+     "b"
+    ]
+   ]
+  }
+ ],
+ "cupoPorMin": [
+  [
+   0,
+   1800000000000,
+   600
+  ],
+  [
+   1800000000000,
+   1800000000000,
+   30
+  ],
+  [
+   1799999940000,
+   1800000000000,
+   30
+  ],
+  [
+   1799999700001,
+   1800000000000,
+   30
+  ],
+  [
+   1799999700000,
+   1800000000000,
+   300
+  ],
+  [
+   1799996100001,
+   1800000000000,
+   300
+  ],
+  [
+   1799996100000,
+   1800000000000,
+   300
+  ],
+  [
+   1799994300000,
+   1800000000000,
+   450
+  ],
+  [
+   1799992500001,
+   1800000000000,
+   599
+  ],
+  [
+   1799992500000,
+   1800000000000,
+   600
+  ],
+  [
+   1800000001000,
+   1800000000000,
+   600
+  ]
+ ],
+ "toqueDegradado": [
+  [
+   2,
+   1,
+   true
+  ],
+  [
+   1,
+   1,
+   false
+  ],
+  [
+   2,
+   2,
+   false
+  ],
+  [
+   1,
+   2,
+   false
+  ],
+  [
+   0,
+   0,
+   false
+  ]
+ ],
+ "tocar": [
+  {
+   "tiene": true,
+   "degradado": true,
+   "despierto": "APP",
+   "tipo": "llamada",
+   "primero": true,
+   "out": true
+  },
+  {
+   "tiene": true,
+   "degradado": true,
+   "despierto": "APP",
+   "tipo": "llamada",
+   "primero": false,
+   "out": true
+  },
+  {
+   "tiene": true,
+   "degradado": true,
+   "despierto": "APP",
+   "tipo": "texto",
+   "primero": true,
+   "out": false
+  },
+  {
+   "tiene": true,
+   "degradado": true,
+   "despierto": "APP",
+   "tipo": "texto",
+   "primero": false,
+   "out": false
+  },
+  {
+   "tiene": true,
+   "degradado": true,
+   "despierto": "DORMIDO",
+   "tipo": "llamada",
+   "primero": true,
+   "out": true
+  },
+  {
+   "tiene": true,
+   "degradado": true,
+   "despierto": "DORMIDO",
+   "tipo": "llamada",
+   "primero": false,
+   "out": true
+  },
+  {
+   "tiene": true,
+   "degradado": true,
+   "despierto": "DORMIDO",
+   "tipo": "texto",
+   "primero": true,
+   "out": true
+  },
+  {
+   "tiene": true,
+   "degradado": true,
+   "despierto": "DORMIDO",
+   "tipo": "texto",
+   "primero": false,
+   "out": false
+  },
+  {
+   "tiene": true,
+   "degradado": false,
+   "despierto": "APP",
+   "tipo": "llamada",
+   "primero": true,
+   "out": true
+  },
+  {
+   "tiene": true,
+   "degradado": false,
+   "despierto": "APP",
+   "tipo": "llamada",
+   "primero": false,
+   "out": true
+  },
+  {
+   "tiene": true,
+   "degradado": false,
+   "despierto": "APP",
+   "tipo": "texto",
+   "primero": true,
+   "out": false
+  },
+  {
+   "tiene": true,
+   "degradado": false,
+   "despierto": "APP",
+   "tipo": "texto",
+   "primero": false,
+   "out": false
+  },
+  {
+   "tiene": true,
+   "degradado": false,
+   "despierto": "DORMIDO",
+   "tipo": "llamada",
+   "primero": true,
+   "out": true
+  },
+  {
+   "tiene": true,
+   "degradado": false,
+   "despierto": "DORMIDO",
+   "tipo": "llamada",
+   "primero": false,
+   "out": true
+  },
+  {
+   "tiene": true,
+   "degradado": false,
+   "despierto": "DORMIDO",
+   "tipo": "texto",
+   "primero": true,
+   "out": true
+  },
+  {
+   "tiene": true,
+   "degradado": false,
+   "despierto": "DORMIDO",
+   "tipo": "texto",
+   "primero": false,
+   "out": true
+  },
+  {
+   "tiene": false,
+   "degradado": true,
+   "despierto": "APP",
+   "tipo": "llamada",
+   "primero": true,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": true,
+   "despierto": "APP",
+   "tipo": "llamada",
+   "primero": false,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": true,
+   "despierto": "APP",
+   "tipo": "texto",
+   "primero": true,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": true,
+   "despierto": "APP",
+   "tipo": "texto",
+   "primero": false,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": true,
+   "despierto": "DORMIDO",
+   "tipo": "llamada",
+   "primero": true,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": true,
+   "despierto": "DORMIDO",
+   "tipo": "llamada",
+   "primero": false,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": true,
+   "despierto": "DORMIDO",
+   "tipo": "texto",
+   "primero": true,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": true,
+   "despierto": "DORMIDO",
+   "tipo": "texto",
+   "primero": false,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": false,
+   "despierto": "APP",
+   "tipo": "llamada",
+   "primero": true,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": false,
+   "despierto": "APP",
+   "tipo": "llamada",
+   "primero": false,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": false,
+   "despierto": "APP",
+   "tipo": "texto",
+   "primero": true,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": false,
+   "despierto": "APP",
+   "tipo": "texto",
+   "primero": false,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": false,
+   "despierto": "DORMIDO",
+   "tipo": "llamada",
+   "primero": true,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": false,
+   "despierto": "DORMIDO",
+   "tipo": "llamada",
+   "primero": false,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": false,
+   "despierto": "DORMIDO",
+   "tipo": "texto",
+   "primero": true,
+   "out": false
+  },
+  {
+   "tiene": false,
+   "degradado": false,
+   "despierto": "DORMIDO",
+   "tipo": "texto",
+   "primero": false,
+   "out": false
+  }
+ ]
+}

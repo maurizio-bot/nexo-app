@@ -546,6 +546,10 @@ tras días sin ✓✓).
   eventoFirmado?: (net) el mismo evento para republicar, cifradoRef (no se re-cifra),
   proximoAt, ejecutor, entregadoAt?, leidoAt?, cambios: [ {de, a, causa, at} ] }
 ```
+**Corrección 28-11 (CI 3171):** el mismo evento solo sirve para republicar en un relé que **no** lo tiene (otro de su lista, o el mismo si
+no lo guardó: se cortó, `rate-limited`). Un relé que ya lo guardó contesta `duplicate` y **no lo reenvía en vivo** a quien escucha: si el
+otro estaba callado o volvió con otra suscripción, nunca lo recibe así. Por eso `republicar.js` solo reusa el evento si ningún relé lo
+guardó; para lo `GUARDADO` sin ✓✓ no se republica (toques y espera, B.4.3) y el receptor lo baja de su buzón al despertar.
 
 #### B.4.3 Quién reintenta y cuándo
 - **Solo el calendario** (en el ejecutor con testigo) llama a `enviar`. Un `tick` por evento (no por reloj fijo): `camino:estado`,

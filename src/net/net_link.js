@@ -132,7 +132,7 @@ export class NetLink {
       // 3085: cambió la red por defecto del teléfono (Wi-Fi ↔ datos móviles; Kotlin watchDefaultNetwork)
       pl.addListener('onNetChange', function(ev) { try { self._onNetChange(ev); } catch (e) {} });
       // 3334: un toque FCM con la app viva (oculta: sus relés no se comprueban en segundo plano y un archivo se quedaba a medias)
-      pl.addListener('onWakeTouch', function() { try { self.refresh('toque FCM'); self.tick(); } catch (e) {} });
+      pl.addListener('onWakeTouch', function(x) { try { if (x && typeof x.deg === 'boolean') self._setFcmDeg(x.deg); self.refresh('toque FCM'); self.tick(); } catch (e) {} });
       if (typeof pl.torStart === 'function') {
         pl.addListener('onTorReady', function(ev) { self._onTorReady(ev); });
         pl.addListener('onTorUp', function(ev) { var p = self._peer(_nid(ev && ev.nx)); p.torUp = true; p.torOk = false; self._hello(_nid(ev.nx)); });
@@ -400,6 +400,7 @@ export class NetLink {
     // Solo lo reciente cuenta para "en línea" (lo guardado de hace rato es del buzón)
     if (now - t < UP_MS && t > (peer.lastRx || 0)) { peer.lastRx = t; peer.wifi = !!o.w; peer.gw = !!o.g; }
     if (o.h && !o.r && now - t < UP_MS && t >= (peer.roT || 0)) { peer.ro = o.ro === 1; peer.roT = t; } // 3151: ¿lee del relé propio?
+    if (o.h && !o.r && now - t < UP_MS) { var td = o.td === 1; if (td !== !!peer.fcmDeg) { peer.fcmDeg = td; console.log('[WAKE] ' + nx + (td ? ': sus toques llegan DEGRADADOS (Android): solo se le toca para llamadas y el primer pendiente' : ': sus toques vuelven a llegar bien')); } } // i18n-ok: registro
     if (o.h && Array.isArray(o.lr) && t > 0 && now - t < 86400000) this._notePeerReads(nx, o.lr, t); // fase 1 (28-11): dónde lee (saludo de su app o de su nativo)
     // 3247: ¿tiene NEXO limitado por el ahorro de batería? (solo lo dice el saludo de su app; el del nativo —r— no lo trae)
     if (o.h && !o.r && (o.lm === 0 || o.lm === 1) && now - t < UP_MS) {
@@ -535,7 +536,7 @@ export class NetLink {
     }
     var body = { t: Date.now(), w: this.wifi ? 1 : 0 };
     if (this.gwOnly()) body.g = 1; // puente parte 4: «estoy por un puente»: mándame fotos/archivos al buzón de archivos
-    if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } if (this.fcmToken) body.f = this.fcmToken; if (this._ownHealthy()) body.ro = 1; body.lr = this.myReads(); if (typeof window !== 'undefined' && typeof window.NEXO_BG_LIMITED === 'boolean') body.lm = window.NEXO_BG_LIMITED ? 1 : 0; } // 3247: lm = «NEXO limitado por el ahorro de batería» // 3151: ro = «leo del relé propio»
+    if (opts && opts.hello) { body.h = 1; if (this.tor.ready && this.tor.onion) { body.o = this.tor.onion; body.op = this.tor.port; } if (this.fcmToken) body.f = this.fcmToken; if (this._ownHealthy()) body.ro = 1; body.lr = this.myReads(); if (typeof window !== 'undefined' && typeof window.NEXO_BG_LIMITED === 'boolean') body.lm = window.NEXO_BG_LIMITED ? 1 : 0; if (this.fcmDeg) body.td = 1; } // fase 1 B.5.6: td = «mis toques llegan degradados» // 3247: lm = «NEXO limitado por el ahorro de batería» // 3151: ro = «leo del relé propio»
     // #130b (dueño 31-10): una oferta de llamada/videollamada (1-a-1 o invitación de grupo) marca el sobre con cl:1, para
     // que la escucha nativa de internet en segundo plano (NetBg) la saque como LLAMADA a pantalla completa (enciende el
     // teléfono, Contestar/Rechazar), no como un aviso de mensaje. El síntoma del dueño era justo ese: con la pantalla

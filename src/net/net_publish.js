@@ -2,6 +2,7 @@ import { schnorr } from '@noble/curves/secp256k1.js';
 import { _event, BLOB_KIND, _relaySafe, _relayHost, _rnd, SEND_SILENT_MS, MAX_RELAY_FRAME } from './net_link_shared.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { tipoLimite, pausaMs, anotarLimite, juntarPausas, lecturasDe, destinos } from '../core/ruta/politica_reles.js';
+import { cupoPorMin, anotar as anotarPuntos, puntuar, ordenar as ordenarReles } from '../core/ruta/reles_puntos.js';
 // Métodos de NetLink: PUBLICAR y BAJAR: eventos en los relés, buzón de archivos, publicar en varios y bajar por id.
 // Reestructuración 15-11: movidos TAL CUAL desde net_link.js, que los une a la clase (como métodos normales).
 
@@ -83,6 +84,20 @@ export const netPublish = {
     if (n) { this._limitAt = Math.max(this._limitAt || 0, now); console.log('[NET] La parte nativa dejó ' + n + ' relé(s) en pausa para publicar: los respeto'); } // i18n-ok: registro
     return n;
   },
+  // Fase 1 (contrato B.5.3): PUNTUAR los relés con lo que contestan a lo que publicamos (aceptación, tiempo hasta el OK, castigos en 24 h).
+  // Ordena los destinos y sale en el diagnóstico cada 10 min («[NET] Puntos de los relés»).
+  _relayScore(url, r, ok, msg) {
+    if (!r || r.gw) return;
+    var now = Date.now(), ms = r._evAt ? now - r._evAt : 0, castigo = !ok && !!tipoLimite(msg);
+    var m = this._puntos || (this._puntos = {});
+    m[url] = anotarPuntos(m[url], ok, ms, castigo, now);
+    if (now - (this._puntosSaid || 0) > 600000) {
+      this._puntosSaid = now;
+      var self = this, txt = Object.keys(m).map(function(u) { var s = m[u]; return _relayHost(u) + ' ' + puntuar(s, now) + ' (' + s.ok + '/' + s.pub + ' OK, ' + s.tOk + ' ms' + (s.castigos.length ? ', ' + s.castigos.length + ' castigos 24 h' : '') + ')'; });
+      console.log('[NET] Puntos de los relés: ' + txt.join(' · ')); // i18n-ok: registro
+    }
+  },
+  _ordenReles(urls) { return ordenarReles(urls, this._puntos || {}, Date.now()); },
   // 3348: ¿este relé está en pausa para publicar?
   relayCooling(r, now) { return !!(r && !r.gw && r.coolUntil && r.coolUntil > (now || Date.now())); },
   // 3348: un relé dijo que no: si es por límite o castigo, en pausa (y quizá entra uno de reserva)
@@ -113,7 +128,9 @@ export const netPublish = {
     if (!this._isBulkEv(ev)) return 0;
     var now = Date.now(), t = this._pubTimes || [];
     while (t.length && now - t[0] > QUOTA_WIN_MS) t.shift();
-    var cap = this.relayLimitedRecently() ? QUOTA_CALM_PER_MIN : QUOTA_PER_MIN, gap = QUOTA_WIN_MS / cap;
+    // Fase 1 (contrato B.5.4): tras un límite, 30/min los 5 primeros min (como antes), luego la MITAD 1 h y vuelve despacio en otra hora
+    // (reles_puntos.cupoPorMin; la misma cuenta en RutaCalendario.kt). Antes volvía a 600/min a los 5 min y el mismo relé volvía a limitar.
+    var cap = cupoPorMin(this._limitAt || 0, now), gap = QUOTA_WIN_MS / cap;
     if (t.length < cap && now >= (this._quotaNextAt || 0)) return 0;
     var at = Math.max(now, this._quotaNextAt || 0, t.length >= cap ? t[t.length - cap] + QUOTA_WIN_MS : 0);
     this._quotaNextAt = at + gap;
@@ -305,7 +322,7 @@ export const netPublish = {
         var vista = [];
         self.relays.forEach(function(r, u) { if (!r.fetchOnly) vista.push({ url: u, abierto: !!(r.open && r.ws), hasta: r.coolUntil || 0, soloLeer: !!r.lo, puente: !!r.gw }); });
         var d = destinos(vista, lee, now0);
-        d.publicar.forEach(function(u) { open.push(self.relays.get(u)); });
+        self._ordenReles(d.publicar).forEach(function(u) { open.push(self.relays.get(u)); }); // fase 1 B.5.3: los mejor puntuados primero
         if (!open.length) {
           self._routeNote(nx, d.motivo, lee);
           if (d.motivo === 'en_pausa') { reject(self._allCoolingErr(d.pausados.map(function(u) { return self.relays.get(u); }))); return; }

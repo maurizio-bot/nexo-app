@@ -128,7 +128,7 @@ internal fun NexoBlePlugin.frozenDeliver() {
 internal fun NexoBlePlugin.wakeTouchToApp() {
     if (closedMode) return
     remLog("INFO", "FCM", "Toque FCM con la app viva: se le avisa para que compruebe sus relés")
-    notifyListeners("onWakeTouch", JSObject().put("ts", System.currentTimeMillis()))
+    notifyListeners("onWakeTouch", JSObject().put("ts", System.currentTimeMillis()).put("deg", NexoFcmService.degradado(context)))
 }
 
 // 2A (23-11): ¿pasa el sello de pareja? Sin clave de ese contacto no se puede comprobar (vale, como antes); con clave, tiene que cuadrar.
@@ -312,7 +312,7 @@ internal fun NexoBlePlugin.getFcmTokenImpl(call: PluginCall) {
                 try { prefs?.edit()?.putString(NexoFcmService.PREF_TOKEN, tok)?.apply() } catch (e: Exception) {}
                 // 14A: el sello, solo si es de ESTE token (si el token cambió, la app pide otro)
                 val sealed = try { if (prefs?.getString(NexoFcmService.PREF_SEALED_FOR, "") == tok) prefs?.getString(NexoFcmService.PREF_SEALED, "") ?: "" else "" } catch (e: Exception) { "" }
-                call.resolve(JSObject().put("token", tok).put("sealed", if (NexoFcmService.sealOk(sealed)) sealed else ""))
+                call.resolve(JSObject().put("token", tok).put("sealed", if (NexoFcmService.sealOk(sealed)) sealed else "").put("deg", NexoFcmService.degradado(context)))
             } else {
                 val saved = try { prefs?.getString(NexoFcmService.PREF_TOKEN, "") ?: "" } catch (e: Exception) { "" }
                 call.resolve(JSObject().put("token", saved).put("error", task.exception?.message ?: "sin token"))
