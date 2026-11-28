@@ -67,7 +67,7 @@ const { importSrc } = require('./srcmod');
   ok('R_huella_corta', R.huella('x'.repeat(60000)).length < 20 && R.huella('a') !== R.huella('b'));
   // D
   const relSrc = fs.readFileSync(path.join(__dirname, '../../src/net/net_relays.js'), 'utf8');
-  ok('D_duplicate_es_guardado', /fn\(!!m\[2\] \|\| \/\^duplicate:\/i\.test\(String\(m\[3\] \|\| ''\)\), m\[3\]\)/.test(relSrc));
+  ok('D_duplicate_es_guardado', /var okD = !!m\[2\] \|\| \/\^duplicate:\/i\.test\(String\(m\[3\] \|\| ''\)\);/.test(relSrc) && /fn\(okD, m\[3\]\)/.test(relSrc)); // 3173: el mismo «ok» también puntúa al relé
   // I
   const nl = fs.readFileSync(path.join(__dirname, '../../src/net/net_link.js'), 'utf8');
   ok('I_send_republica', /this\._repub\.buscar\(nx, content, rdia, Date\.now\(\)\)/.test(nl) && /this\._repub\.guardar\(nx, content, rdia, ev, ttl, Date\.now\(\)\)/.test(nl) && /!hello0/.test(nl) && /!== TTL_RT/.test(nl));
